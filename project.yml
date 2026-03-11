@@ -1,0 +1,23 @@
+name: NeatGit
+options:
+  minimumXcodeGenVersion: 2.45.0
+  createIntermediateGroups: true
+
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: io.github.x0c.neatgit
+    PRODUCT_NAME: NeatGit
+    SWIFT_VERSION: 5.9
+    MACOSX_DEPLOYMENT_TARGET: 14.0
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  NeatGit:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: NeatGitApp
+    settings:
+      base:
+        INFOPLIST_FILE: NeatGitApp/Info.plist

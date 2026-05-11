@@ -11,3 +11,6 @@ DerivedData/
 
 # OS
 .DS_Store
+/.build-xcode/
+/Web/MonacoDiff/node_modules/
+/NeatGitApp/Resources/MonacoDiff/

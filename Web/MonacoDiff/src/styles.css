@@ -1,0 +1,37 @@
+:root {
+  color-scheme: light;
+  background: #eef2f7;
+  color: #1f2933;
+  font-family: "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+html,
+body,
+#editor-shell {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), transparent 34%),
+    linear-gradient(180deg, #f6f8fb 0%, #ebeff5 100%);
+}
+
+.page {
+  height: 100%;
+}
+
+#editor-shell {
+  min-height: 0;
+}
+
+.editor-surface {
+  min-height: 0;
+  height: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.85) inset;
+}

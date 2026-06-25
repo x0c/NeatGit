@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import os
 
 struct ContentView: View {
     private enum WindowChromePalette {
@@ -48,6 +49,8 @@ struct ContentView: View {
     @State private var commitAlert: CommitAlert?
     @State private var repositoryFileActionAlert: RepositoryFileActionAlert?
     @FocusState private var focusedTarget: FocusTarget?
+
+    private static let logger = Logger(subsystem: "io.github.x0c.neatgit", category: "AICommit")
 
     private let gitIgnoreWriter = GitIgnoreWriter()
     private let commitService = GitRepositoryCommitService()
@@ -269,9 +272,13 @@ struct ContentView: View {
     }
 
     private func handleGenerateCommitMessage() {
-        guard !isGeneratingCommitMessage else { return }
+        guard !isGeneratingCommitMessage else {
+            Self.logger.info("AI 生成被跳过：正在生成中")
+            return
+        }
 
         guard let repository = selectedRepository else {
+            Self.logger.info("AI 生成被跳过：未选择仓库")
             commitAlert = CommitAlert(
                 title: "无法生成",
                 message: "请先选择仓库。"
@@ -280,6 +287,7 @@ struct ContentView: View {
         }
 
         guard let snapshot = statusStore.snapshot, !snapshot.changedFiles.isEmpty else {
+            Self.logger.info("AI 生成被跳过：无文件变更")
             commitAlert = CommitAlert(
                 title: "无法生成",
                 message: "当前仓库没有可分析的文件变更。"
@@ -291,7 +299,9 @@ struct ContentView: View {
 
         do {
             configuration = try llmSettingsStore.makeConfiguration()
+            Self.logger.info("LLM 配置: baseURL=\(configuration.baseURL.absoluteString) model=\(configuration.model)")
         } catch {
+            Self.logger.error("LLM 配置失败: \(GitCommandError.describe(error))")
             commitAlert = CommitAlert(
                 title: "AI 设置未完成",
                 message: "\(GitCommandError.describe(error))\n\n可使用 cmd+, 打开设置页继续配置。"
@@ -300,6 +310,7 @@ struct ContentView: View {
         }
 
         isGeneratingCommitMessage = true
+        Self.logger.info("开始 AI 生成，文件数=\(snapshot.changedFiles.count)")
 
         Task {
             do {
@@ -310,11 +321,13 @@ struct ContentView: View {
                     systemPrompt: llmSettingsStore.effectiveSystemPrompt
                 )
 
+                Self.logger.info("AI 生成成功: \(generatedMessage.prefix(100))")
                 await MainActor.run {
                     isGeneratingCommitMessage = false
                     commitMessage = generatedMessage
                 }
             } catch {
+                Self.logger.error("AI 生成失败: \(GitCommandError.describe(error))")
                 await MainActor.run {
                     isGeneratingCommitMessage = false
                     commitAlert = CommitAlert(

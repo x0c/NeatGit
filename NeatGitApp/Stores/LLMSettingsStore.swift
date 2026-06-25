@@ -13,7 +13,7 @@ final class LLMSettingsStore {
 
     private enum DefaultValue {
         static let baseURL = "https://api.deepseek.com"
-        static let model = "deepseek-chat"
+        static let model = "deepseek-v4-flash"
         static let systemPrompt = CommitPromptBuilder.defaultSystemPrompt
     }
 

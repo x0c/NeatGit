@@ -28,7 +28,7 @@ final class LLMChatService: @unchecked Sendable {
         messages: [LLMChatMessage],
         configuration: LLMProviderConfiguration,
         temperature: Double = 0.1,
-        maxTokens: Int = 220,
+        maxTokens: Int = 500,
         responseFormat: LLMResponseFormat? = nil
     ) async throws -> LLMChatCompletionResult {
         let endpoint = try makeEndpoint(from: configuration.baseURL)
@@ -37,7 +37,7 @@ final class LLMChatService: @unchecked Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 45
+        request.timeoutInterval = 10
         request.httpBody = try JSONEncoder().encode(
             OpenAIChatCompletionRequest(
                 model: configuration.model,
@@ -63,8 +63,8 @@ final class LLMChatService: @unchecked Sendable {
         }
 
         let completion = try JSONDecoder().decode(OpenAIChatCompletionResponse.self, from: data)
-        guard let content = completion.choices.first?.message.content else {
-            throw GitCommandError(message: "AI 服务没有返回可用内容。")
+        guard let content = completion.choices.first?.message.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw GitCommandError(message: "AI 服务返回了空内容，可能是输入过长或模型不支持当前请求格式。")
         }
 
         return LLMChatCompletionResult(

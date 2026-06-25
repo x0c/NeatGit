@@ -56,7 +56,6 @@ struct AICommitDebugWindowView: View {
 
             infoGrid(
                 rows: [
-                    ("策略", strategyLabel(for: session.strategy)),
                     ("Base URL", session.baseURL),
                     ("Model", session.model),
                     ("开始时间", timestampText(for: session.startedAt)),
@@ -142,15 +141,6 @@ struct AICommitDebugWindowView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-        }
-    }
-
-    private func strategyLabel(for strategy: CommitGenerationStrategy) -> String {
-        switch strategy {
-        case .singlePass:
-            return "单次调用"
-        case .twoStepMapReduce:
-            return "二阶段 Map-Reduce"
         }
     }
 

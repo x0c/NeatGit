@@ -16,7 +16,6 @@ struct AICommitDebugSession: Identifiable, Sendable {
     let repositoryName: String
     let changedFileCount: Int
     let committableFileCount: Int
-    let strategy: CommitGenerationStrategy
     let baseURL: String
     let model: String
     let startedAt: Date
@@ -36,15 +35,13 @@ final class AICommitDebugStore {
         repositoryName: String,
         changedFileCount: Int,
         committableFileCount: Int,
-        configuration: LLMProviderConfiguration,
-        strategy: CommitGenerationStrategy = .singlePass
+        configuration: LLMProviderConfiguration
     ) {
         latestSession = AICommitDebugSession(
             id: id,
             repositoryName: repositoryName,
             changedFileCount: changedFileCount,
             committableFileCount: committableFileCount,
-            strategy: strategy,
             baseURL: configuration.baseURL.absoluteString,
             model: configuration.model,
             startedAt: Date(),
@@ -64,7 +61,6 @@ final class AICommitDebugStore {
         errorMessage: String?
     ) {
         guard latestSession?.id == sessionID else { return }
-
         latestSession?.attempts.append(
             AICommitDebugAttempt(
                 id: UUID(),

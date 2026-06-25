@@ -589,7 +589,7 @@ struct ContentView: View {
     }
 
     private func isExcludedFromDefaultCommit(_ item: RepositoryFileItem) -> Bool {
-        (item.path as NSString).lastPathComponent == ".gitignore"
+        CommitExclusion.shouldExcludeFromDefaultCommit(item)
     }
 }
 

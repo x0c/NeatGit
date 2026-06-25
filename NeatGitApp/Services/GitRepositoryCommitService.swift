@@ -31,7 +31,7 @@ final class GitRepositoryCommitService: @unchecked Sendable {
         }
 
         let committableItems = request.changedItems.filter { item in
-            item.isCheckableForCommit && !shouldExcludeFromDefaultCommit(item)
+            item.isCheckableForCommit && !CommitExclusion.shouldExcludeFromDefaultCommit(item)
         }
 
         try synchronizeIndex(
@@ -143,11 +143,6 @@ final class GitRepositoryCommitService: @unchecked Sendable {
         }
 
         return paths
-    }
-
-    private func shouldExcludeFromDefaultCommit(_ item: RepositoryFileItem) -> Bool {
-        let fileName = (item.path as NSString).lastPathComponent
-        return fileName == ".gitignore"
     }
 
     private func runGit(

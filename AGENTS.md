@@ -249,3 +249,32 @@ pgrep -fal '/Applications/NeatGit.app/Contents/MacOS/NeatGit'
 2. 保持 macOS 原生、简洁、高频 Git 工作流导向。
 3. 选择 minimal 但完整、可运行、可验证的实现。
 4. 代码改动完成后必须尝试按固定流程构建、杀旧进程并重启预览；如果环境阻塞，必须如实报告。
+
+---
+
+## 文档导航
+
+- [`docs/NEATGIT_KNOWLEDGE_BASE.md`](docs/NEATGIT_KNOWLEDGE_BASE.md)：修改任意 Swift 模块、扩展功能（仓库扫描/文件状态/Diff/提交流程/Monaco 集成/LLM 配置）、评审 PR、分析性能问题、排查运行时 crash 前必读。
+- [`docs/AI_COMMIT_GUIDE.md`](docs/AI_COMMIT_GUIDE.md)：修改或扩展 AI commit message 生成逻辑、接入真实提交/推送流程、调试 LLM 调用失败、评审提交相关代码前必读。
+- [`docs/LLM_COMMIT_MESSAGE_RESEARCH.md`](docs/LLM_COMMIT_MESSAGE_RESEARCH.md)：改进 AI commit prompt 设计、评审 commit 生成策略、调研行业方案、决定是否引入多步流水线或 map-reduce 架构前必读。
+- [`docs/GITIGNORE_KNOWLEDGE_BASE.md`](docs/GITIGNORE_KNOWLEDGE_BASE.md)：修改或扩展 .gitignore 写入逻辑、忽略规则生成、右键忽略菜单交互、排查忽略操作失败前必读。
+- [`docs/OPERATIONS_GUIDE.md`](docs/OPERATIONS_GUIDE.md)：首次接手项目、本地构建遇到阻碍、验证代码变更、排查 Monaco 空白/扫描卡死/AI 调用失败等运行时问题时必读。
+
+---
+
+## 文档待补充（backlog）
+
+当前无待补充领域。后续新增领域由 doc-update 登记。
+
+---
+
+## 领域地图（doc-init）
+
+<!-- 覆盖度复核基线：2026-06-24 · 源码指纹 扫描 29 Swift 文件 / JavaScript 184 · C/C++ 4 / 1 子模块 · 基线提交 2f13854 -->
+
+| 领域 | 入口锚点 |
+|------|---------|
+| 核心知识（仓库扫描/文件状态/Diff/提交/Monaco/状态管理） | `NeatGitApp/` |
+| AI Commit 生成 | `NeatGitApp/Services/CommitMessageGenerationService.swift`, `NeatGitApp/Stores/LLMSettingsStore.swift` |
+| Operations（构建/启动/验证） | `NeatGit.xcodeproj`, `Web/MonacoDiff/` |
+| .gitignore 管理 | `NeatGitApp/Services/GitIgnoreWriter.swift` |

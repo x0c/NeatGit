@@ -45,7 +45,10 @@ struct MonacoDiffView: View {
                     }
                 }
             } else if controller.isLoading {
+                // 与面板层 loading 胶囊同一样式，保证在网页内容之上的对比度。
                 ProgressView("正在加载代码预览…")
+                    .padding()
+                    .background(.regularMaterial, in: .rect(cornerRadius: 12))
             }
         }
         .onChange(of: payload, initial: true) { _, payload in

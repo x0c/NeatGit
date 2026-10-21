@@ -136,6 +136,9 @@ struct GitStatusBadge: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(style.tint.opacity(0.16))
             )
+            // 角标三通道：颜色 + 字母 + 中文说明。help 覆盖鼠标悬停，
+            // accessibilityLabel 覆盖 VoiceOver（否则只会读出 "M" 这类单字母）。
             .help(style.label)
+            .accessibilityLabel(style.label)
     }
 }

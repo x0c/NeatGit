@@ -54,12 +54,20 @@ struct RepositoryFilePanel: View {
             HStack {
                 if let snapshot {
                     if let errorMessage {
-                        Label("刷新失败：\(errorMessage)", systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .help(errorMessage)
+                        // 刷新失败降级为顶部提示（SWR）：快照内容保留可操作，
+                        // 这里只承担失败可见性，所以图标用警示色、正文用主要层级，
+                        // 避免整条 secondary 让用户把失败当成普通摘要忽略。
+                        Label {
+                            Text("刷新失败：\(errorMessage)")
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                        }
+                        .help(errorMessage)
                     } else {
                         Text(summaryText(for: snapshot))
                             .font(.caption)
@@ -163,7 +171,9 @@ struct RepositoryFilePanel: View {
             set: { isExpanded in
                 guard isExpanded != expandedSections.contains(section) else { return }
 
-                withAnimation(.easeInOut(duration: 0.16)) {
+                // 与 Theme.disclosureAnimation 共用同一 token，
+                // 避免侧栏/中栏各自手写 duration 导致节奏不一致。
+                withAnimation(Theme.disclosureAnimation) {
                     expandedSections = isExpanded ? [section] : []
                 }
             }
@@ -205,9 +215,10 @@ private struct RepositoryFileInteractiveRow: View {
         }
         .help(item.relativePath)
         .accessibilityIdentifier("file-\(item.id)")
+        .accessibilityLabel("\(item.displayName)，\(item.statusStyle.label)")
         .onHover { onHoverChange(item, $0) }
         .contextMenu {
-            Button("复制文件名：\(item.displayName)") {
+            Button("复制文件名") {
                 copyToPasteboard(item.displayName)
             }
 
@@ -221,16 +232,19 @@ private struct RepositoryFileInteractiveRow: View {
                 Divider()
             }
 
+            // 忽略 / skip-worktree 都是可逆操作（改 .gitignore / 解标记即可恢复），
+            // 按保护性摩擦规则不加二次确认；失败经 fileActionStore.alert 弹窗，
+            // 不在这里吞错。
             if item.isUntracked {
-                Button("忽略 \(item.relativePath) 的版本管理") {
+                Button("忽略此路径") {
                     onIgnore(.exactPath(item.relativePath, isDirectory: item.kind == .directory), item)
                 }
-                Button("忽略文件名为 \(item.displayName) 的版本管理") {
+                Button("忽略所有同名文件“\(item.displayName)”") {
                     onIgnore(.fileName(item.displayName), item)
                 }
-                Menu("忽略所在文件夹的版本管理") {
+                Menu("忽略所在文件夹") {
                     if item.directoryIgnoreOptions.isEmpty {
-                        Button("文件位于仓库根目录，没有可忽略的上级目录") {}
+                        Button("位于仓库根目录，没有可忽略的上级目录") {}
                             .disabled(true)
                     } else {
                         ForEach(item.directoryIgnoreOptions) { directory in
@@ -243,12 +257,12 @@ private struct RepositoryFileInteractiveRow: View {
             }
 
             if item.canMarkAsSkipped {
-                Button("将 \(item.displayName) 标记为不提交的文件") {
+                Button("标为不提交") {
                     onMarkAsSkipped(item)
                 }
             }
             if item.canRemoveFromSkipped {
-                Button("将 \(item.displayName) 移出不提交的文件") {
+                Button("移出不提交") {
                     onRemoveFromSkipped(item)
                 }
             }

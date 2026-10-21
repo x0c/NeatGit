@@ -106,7 +106,7 @@ struct ContentView: View {
             Button("刷新文件", systemImage: "arrow.clockwise") {
                 statusStore.refreshCurrentRepository()
             }
-            .keyboardShortcut("r")
+            .keyboardShortcut("r", modifiers: .command)
             .disabled(selectedRepository == nil || statusStore.isLoading || commitStore.isBusy)
             .help("重新读取当前仓库状态")
             .accessibilityIdentifier("refresh-repository")
@@ -140,7 +140,7 @@ struct ContentView: View {
             ),
             expandedGroupID: $selection.expandedGroupID,
             onToggleGroup: { groupID in
-                withAnimation(.easeInOut(duration: 0.16)) {
+                withAnimation(Theme.disclosureAnimation) {
                     selection.toggleGroup(groupID)
                 }
             },

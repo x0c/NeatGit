@@ -26,7 +26,7 @@ struct CommitComposerBar: View {
                     .autocorrectionDisabled()
                     .font(.body)
                     .padding(8)
-                    .disabled(repository == nil || isRunningCommitAction)
+                    .disabled(repository == nil || isRunningCommitAction || isGeneratingMessage)
                     .accessibilityLabel("提交说明")
                     .accessibilityIdentifier("commit-message-editor")
 
@@ -40,7 +40,7 @@ struct CommitComposerBar: View {
                         .accessibilityHidden(true)
                 }
             }
-            .frame(minHeight: 84, idealHeight: 96, maxHeight: 140)
+            .frame(minHeight: 64, idealHeight: 80, maxHeight: 120)
             .background(.background)
 
             HStack(spacing: 8) {
@@ -48,8 +48,8 @@ struct CommitComposerBar: View {
                     Label("AI 调试", systemImage: "ladybug")
                         .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.bordered)
-                .help("打开 AI 提交调试窗口")
+                .buttonStyle(.borderless)
+                .help("打开 AI 提交调试窗口（排查生成结果用，日常提交不需要）")
                 .accessibilityIdentifier("open-ai-debug")
 
                 Button(action: onGenerateMessage) {
@@ -68,13 +68,15 @@ struct CommitComposerBar: View {
 
                 Spacer(minLength: 0)
 
-                Menu("提交并推送") {
+                Menu(isRunningCommitAction ? "正在提交…" : "提交并推送") {
                     Button("仅提交到本地", action: onCommitOnly)
+                    Text("仅提交到本地不会推送到远端，可稍后手动推送。")
                 } primaryAction: {
                     onCommitAndPush()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!isCommitEnabled)
+                .help("提交并推送会把本地 commit 同步到远端；仅提交到本地不会推送")
                 .accessibilityIdentifier("commit-menu")
             }
             .controlSize(.small)
@@ -82,6 +84,8 @@ struct CommitComposerBar: View {
             Text(statusMessage)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .accessibilityIdentifier("commit-status-message")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

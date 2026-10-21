@@ -50,11 +50,22 @@ struct RepositorySidebar: View {
         .navigationSplitViewColumnWidth(min: Layout.minWidth, ideal: Layout.idealWidth)
         .accessibilityIdentifier("repository-sidebar")
         .overlay {
+            // 空态只保留完成任务不可替代的一句：扫描中给诚实的进行态，
+            // 扫完无结果说明位置（个人目录），不写教学式说明。
             if groups.isEmpty {
-                ContentUnavailableView {
-                    Label("暂无项目", systemImage: "folder.badge.questionmark")
-                } description: {
-                    Text(isScanning ? "正在扫描本地仓库…" : "等待首次自动扫描完成")
+                if isScanning {
+                    ContentUnavailableView {
+                        Label("正在扫描本地仓库…", systemImage: "magnifyingglass")
+                    } description: {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                } else {
+                    ContentUnavailableView {
+                        Label("暂无项目", systemImage: "folder.badge.questionmark")
+                    } description: {
+                        Text("未在个人目录发现 Git 仓库")
+                    }
                 }
             }
         }

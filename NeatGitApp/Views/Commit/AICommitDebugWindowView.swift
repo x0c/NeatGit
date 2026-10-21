@@ -126,12 +126,16 @@ struct AICommitDebugWindowView: View {
         "共发现 \(session.changedFileCount) 个变更文件，实际参与 AI 分析 \(session.committableFileCount) 个，已记录 \(session.attempts.count) 轮请求。"
     }
 
-    private func timestampText(for date: Date) -> String {
+    private static let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    private func timestampText(for date: Date) -> String {
+        Self.timestampFormatter.string(from: date)
     }
 
     private func copyLatestUserPrompt() {

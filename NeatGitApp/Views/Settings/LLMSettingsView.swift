@@ -41,6 +41,9 @@ struct LLMSettingsView: View {
                 Button("恢复默认") {
                     settingsStore.resetSystemPrompt()
                 }
+                .disabled(
+                    settingsStore.systemPrompt == settingsStore.defaultSystemPrompt
+                )
 
                 Text("System Prompt 会直接作为 AI 提交的系统提示词发送，可在调试窗口查看最终发出的内容。")
                     .font(.caption)

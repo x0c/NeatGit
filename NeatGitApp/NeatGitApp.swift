@@ -16,6 +16,7 @@ struct NeatGitApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             SidebarCommands()
+            NeatGitUpdateCommands()
         }
 
         Window("AI 调试", id: AICommitDebugWindowView.windowID) {
@@ -29,5 +30,18 @@ struct NeatGitApp: App {
         }
         .defaultSize(width: 600, height: 640)
         .windowResizability(.contentSize)
+    }
+}
+
+private struct NeatGitUpdateCommands: Commands {
+    @State private var updater = AppUpdater.shared
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("检查更新…") {
+                updater.checkForUpdates()
+            }
+            .disabled(!updater.canCheckForUpdates)
+        }
     }
 }

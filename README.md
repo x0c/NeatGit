@@ -75,6 +75,13 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建，
 - 提交范围为当前仓库符合条件的全部更改，自动排除 `.gitignore`、不提交文件和冲突文件；文件列表选择不改变提交范围。
 - 未选择仓库、说明为空、正在提交或正在 AI 生成时不可提交。
 
+### 8. 自动更新
+
+- 通过 Sparkle 2 实现应用内自动更新：自动检查、后台下载安装。
+- 更新清单带 EdDSA 签名，解包前验签；后台发现更新不抢焦点，只有主动“检查更新…”才弹窗。
+- 入口：应用菜单 `NeatGit → 检查更新…`，或设置页“更新”分组（含自动开关与当前版本号）。
+- 他人机器首次安装走 GitHub Releases 的 DMG（Developer ID 签名 + 苹果公证 + 装订票据）。
+
 ## 当前边界
 
 下面这些能力在代码里已经有明确边界，README 也同步按现状说明：
@@ -104,15 +111,18 @@ NeatGitApp/
   NeatGitApp.swift                # 应用入口
   ContentView.swift               # 主界面编排
   Domain/                         # 仓库、文件状态、diff 模型
-  Services/                       # Git 扫描、状态读取、diff 读取、.gitignore 写入
+  Services/                       # Git 扫描、状态读取、diff 读取、.gitignore 写入、AppUpdater
   Stores/                         # UI 状态容器
   Views/
     Sidebar/                      # 左侧仓库列表
     RepositoryStatus/             # 文件状态面板与预览容器
     Diff/                         # macOS 26 WebKit + Monaco
     Commit/                       # 底部提交栏
+    Settings/                     # LLM 设置 + 更新开关
   Resources/MonacoDiff/           # 打包后的 Monaco 前端资源
 Web/MonacoDiff/                   # Monaco diff 前端源码
+appcast.xml                       # Sparkle 更新清单（随仓库发布）
+scripts/publish-release.sh        # 签名 + 公证 + DMG + GitHub Release 发布器
 project.yml                       # XcodeGen 配置源
 ```
 

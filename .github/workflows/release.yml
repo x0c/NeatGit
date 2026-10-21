@@ -1,0 +1,147 @@
+name: Release Validation
+
+# Tag CI is validation only. It builds the tagged source universal
+# and packages, and keeps the packages as login-required workflow artifacts
+# (for a public repo any signed-in person with access can download them:
+# authentication is access control, not confidentiality). It never creates
+# or touches a public GitHub Release: public installs come exclusively
+# from the maintainer's local signed + notarized publish (see RELEASING.md
+# R4). Least-privilege token:
+# https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/controlling-permissions-for-github_token
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    name: Build And Validate Tag
+    runs-on: macos-26
+
+    env:
+      APP_NAME: NeatGit
+      PROJECT_FILE: NeatGit.xcodeproj
+      SCHEME: NeatGit
+      DERIVED_DATA_PATH: build/DerivedData
+      EXPORT_DIR: build/release
+
+    steps:
+      - name: Checkout Tag Source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.0"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build Monaco Frontend
+        run: |
+          set -euo pipefail
+          cd Web/MonacoDiff
+          npm ci
+          npm run build
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Prepare Build Variables
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          ASSET_BASENAME="${APP_NAME}-${GITHUB_REF_NAME}-macOS-universal"
+
+          {
+            echo "VERSION=${VERSION}"
+            echo "ASSET_BASENAME=${ASSET_BASENAME}"
+            echo "APP_PATH=${DERIVED_DATA_PATH}/Build/Products/Release/${APP_NAME}.app"
+            echo "ZIP_PATH=${EXPORT_DIR}/${ASSET_BASENAME}.zip"
+            echo "DMG_PATH=${EXPORT_DIR}/${ASSET_BASENAME}.dmg"
+            echo "CHECKSUM_PATH=${EXPORT_DIR}/SHA256SUMS.txt"
+          } >> "$GITHUB_ENV"
+
+      - name: Build Release App
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          xcodebuild \
+            -project "${PROJECT_FILE}" \
+            -scheme "${SCHEME}" \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "${DERIVED_DATA_PATH}" \
+            MARKETING_VERSION="${VERSION}" \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Verify Universal Binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BINARY_PATH="${APP_PATH}/Contents/MacOS/${APP_NAME}"
+          lipo -info "${BINARY_PATH}"
+
+      - name: Package Validation Assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${EXPORT_DIR}"
+          ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${ZIP_PATH}"
+
+          STAGE="${EXPORT_DIR}/dmg-stage"
+          rm -rf "${STAGE}"
+          mkdir -p "${STAGE}"
+          ditto "${APP_PATH}" "${STAGE}/${APP_NAME}.app"
+          ln -s /Applications "${STAGE}/Applications"
+          # macos-26 has `diskutil image`; keep hdiutil fallback for older runners.
+          if command -v diskutil >/dev/null && diskutil image --help >/dev/null 2>&1; then
+            diskutil image create from "${STAGE}" "${DMG_PATH}" --format UDZO --volumeName "${APP_NAME} ${VERSION}"
+          else
+            hdiutil create \
+              -volname "${APP_NAME} ${VERSION}" \
+              -srcfolder "${STAGE}" \
+              -ov -format UDZO \
+              "${DMG_PATH}"
+          fi
+
+          shasum -a 256 "${ZIP_PATH}" "${DMG_PATH}" > "${CHECKSUM_PATH}"
+
+      - name: Verify Validation Assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f "${ZIP_PATH}"
+          test -f "${DMG_PATH}"
+          test -f "${CHECKSUM_PATH}"
+          # These are unsigned build-proof packages for this tag run only.
+          # They must never be attached to a public Release.
+
+      - name: Upload Login-Required Validation Artifact
+        # Login-required, expiring workflow artifact — not a public Release.
+        # Inputs: https://github.com/actions/upload-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ env.ASSET_BASENAME }}-unsigned-validation"
+          path: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.DMG_PATH }}
+            ${{ env.CHECKSUM_PATH }}
+          if-no-files-found: error
+          retention-days: 14

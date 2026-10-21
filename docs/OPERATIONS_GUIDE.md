@@ -111,7 +111,28 @@ xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug \
 
 ---
 
-## 五、常见阻碍
+## 六、发布（签名 DMG + 公证 + GitHub Releases）
+
+> 权威流程见 [`RELEASING.md`](../RELEASING.md)。公开发布只走本机 `scripts/publish-release.sh`
+>（Developer ID 签名 + 苹果公证 + 装订），tag CI（`.github/workflows/release.yml`）只做无签名校验，
+>绝不创建或触碰公开 Release。
+
+```bash
+scripts/publish-release.sh --dry-run      # 只做前置检查，不写任何东西
+scripts/publish-release.sh --local-only   # 本地出已公证 DMG + 更新 ZIP，不碰远端
+scripts/publish-release.sh                # 后台完整发布（公证排队几十分钟，日志见 build/release-logs/）
+```
+
+硬性约束（与 NeatEditor 同源）：
+
+- `CURRENT_PROJECT_VERSION` 是 Sparkle 判定新旧的唯一依据，**必须严格递增**；只改展示版本用户端永远收不到更新。
+- 每个版本必须在 `CHANGELOG.md` 有对应条目（发行说明正文来源）。
+- `Info.plist` 的 `SUFeedURL` / `SUPublicEDKey` 与钥匙串 EdDSA 密钥（`caozc.top`，各应用共用）配套，勿动。
+- Release 产物固定三件：已公证 DMG + Sparkle 签名 ZIP + `SHA256SUMS.txt`，走草稿纪律（先草稿 → 逐个上传 → 字节验 → 再公开）。
+
+---
+
+## 七、常见阻碍
 
 | 现象 | 排查方向 |
 |------|---------|

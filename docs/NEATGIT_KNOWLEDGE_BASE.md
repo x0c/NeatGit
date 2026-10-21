@@ -23,6 +23,7 @@ NeatGit 是面向 macOS 的原生 Git 客户端（SwiftUI 构建）。核心循�
   - 2.8 Monaco Diff 渲染链路
   - 2.9 状态管理规范
   - 2.10 仓库扫描约束
+  - 2.11 应用内更新与签名发布约束
 - 三、AI 易错点（10 条）
 - 四、验证路径
 - 五、关联文档
@@ -62,6 +63,7 @@ NeatGitApp/
 │   ├── GitRepositoryCommitService.swift # 提交 / 推送
 │   ├── GitIgnoreWriter.swift            # 写 .gitignore
 │   ├── CommitMessageGenerationService.swift  # AI commit 协调层（策略选择 + 编排）
+│   ├── AppUpdater.swift                     # Sparkle 应用内更新桥接（温和提醒）
 │   ├── CommitDiffAnalyzer.swift      # diff 分析、摘要、symbol 提取
 │   ├── CommitPromptBuilder.swift     # prompt 构建 + 摘要/guidance/signals
 │   ├── LLMChatService.swift          # OpenAI 兼容 API 调用 + response_format
@@ -232,6 +234,15 @@ MonacoDiffView → MonacoDiffController → WebView(page)
 - 从 `FileManager.default.homeDirectoryForCurrentUser` 开始，递归深度 **6 层**。
 - 跳过：`.Trash`、`.cache`、`.gradle`、`.m2`、`node_modules`、`vendor`、`Pods`、`.Xcode`、`DerivedData` 等常见缓存和依赖目录。
 - 并发度：`TaskGroup` 并行子目录，无额外限制。
+
+### 2.11 应用内更新与签名发布约束（2026-10 引入）
+
+更新入口：`NeatGitApp/Services/AppUpdater.swift`（`@MainActor + @Observable`，`SPUStandardUpdaterController` 温和提醒模式：后台发现更新不抢焦点，只有主动检查才弹窗）。菜单 `NeatGit → 检查更新…`（`NeatGitApp.swift`）与设置页“更新”分组（`LLMSettingsView.swift`）只观察 `canCheckForUpdates` 等桥接状态，不直接碰 Sparkle 对象。
+
+- `Info.plist` 的 `SUFeedURL`（`https://raw.githubusercontent.com/x0c/NeatGit/master/appcast.xml`，注意默认分支是 `master`）与 `SUPublicEDKey`（与 NeatEditor/NeatPaste 共用同一 `caozc.top` EdDSA 密钥）配套，缺任一项时不要 `startingUpdater: true`。
+- `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` 双写于 `project.yml`，分别映射 `CFBundleShortVersionString` / `CFBundleVersion`；内部构建号必须严格递增，否则 Sparkle 永远判定“已是最新”。
+- Release 配置：Manual + `Developer ID Application` + `ENABLE_HARDENED_RUNTIME=YES` + `--timestamp` + `INJECT_BASE_ENTITLEMENTS=NO`；Debug 保持自动签名。发版一律走 `scripts/publish-release.sh`（archive + developer-id 导出，路线 A），禁止 build 后手签。
+- `appcast.xml` 随仓库发布，`CHANGELOG.md` 当版条目是发行说明来源；发布纪律见 `RELEASING.md` R1–R7。
 
 ---
 

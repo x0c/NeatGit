@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LLMSettingsView: View {
     @Bindable var settingsStore: LLMSettingsStore
+    @State private var updater = AppUpdater.shared
 
     var body: some View {
         Form {
@@ -28,6 +29,44 @@ struct LLMSettingsView: View {
                 Text("API Key 会保存在当前 macOS 用户的本地设置中，不再读取 Keychain。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("更新") {
+                Toggle(
+                    "自动检查更新",
+                    isOn: Binding(
+                        get: { updater.automaticallyChecksForUpdates },
+                        set: { updater.setAutomaticChecks($0) }
+                    )
+                )
+                .disabled(!updater.canCheckForUpdates)
+
+                Toggle(
+                    "自动下载并安装更新",
+                    isOn: Binding(
+                        get: { updater.automaticallyDownloadsUpdates },
+                        set: { updater.setAutomaticDownloads($0) }
+                    )
+                )
+                .disabled(!updater.canCheckForUpdates || !updater.allowsAutomaticUpdates)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: "NeatGit").fontWeight(.medium)
+                        Text(
+                            verbatim: Bundle.main.object(
+                                forInfoDictionaryKey: "CFBundleShortVersionString"
+                            ) as? String ?? ""
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 12)
+                    Button("检查更新…") {
+                        updater.checkForUpdates()
+                    }
+                    .disabled(!updater.canCheckForUpdates)
+                }
             }
 
             Section("生成说明") {

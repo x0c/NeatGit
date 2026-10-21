@@ -10,6 +10,25 @@ settings:
     SWIFT_VERSION: 6.0
     MACOSX_DEPLOYMENT_TARGET: 26.0
     CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: SHZQ3MWP3B
+    ENABLE_HARDENED_RUNTIME: NO
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+  configs:
+    Debug:
+      CODE_SIGN_STYLE: Automatic
+      ENABLE_HARDENED_RUNTIME: NO
+    Release:
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGN_IDENTITY: "Developer ID Application"
+      ENABLE_HARDENED_RUNTIME: YES
+      OTHER_CODE_SIGN_FLAGS: "--timestamp"
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.9.2"
 
 targets:
   NeatGit:
@@ -21,6 +40,12 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: NeatGitApp/Info.plist
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+    dependencies:
+      - package: Sparkle
+        product: Sparkle
     scheme:
       testTargets:
         - NeatGitTests

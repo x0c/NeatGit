@@ -29,15 +29,27 @@ git diff --staged → 拼成一个 prompt → 一次 LLM 调用 → 完整 commi
 
 ```
 System: You are to act as an author of a commit message in git.
-        Your mission is to create clean and comprehensive commit messages
-        as per the Conventional Commit Convention / GitMoji.
-        I'll send you an output of 'git diff --staged' command...
+        Your mission is to create clean and comprehensive commit messages as per
+        the Conventional Commit Convention and explain WHAT were the changes and
+        mainly WHY the changes were done.
+
+        I'll send you an output of 'git diff --staged' command, and you are to
+        convert it into a commit message.
+
+        Do not preface the commit with anything, except for the conventional
+        commit keywords: fix, feat, build, chore, ci, docs, style, refactor,
+        perf, test.
+
+        Don't add any descriptions to the commit, only commit message.
         Use the present tense. Lines must not be longer than 74 characters.
+        Use English for the commit message.
 
 User:   <示例 diff>
 
 Assistant: <示例 commit message，如 fix: ... / feat: ...>
 ```
+
+GitMoji 模式下额外增加 emoji 映射表（10 个常用 / 完整 60+ 个）。
 
 **优点**：简单直接，延迟低（1 次 API 调用）
 
@@ -66,6 +78,12 @@ Produce concise bullet points describing the key changes.
 List at most five points for brevity.
 Use the imperative mood and start each line with `-`.
 Exclude file names, diff markers and code snippets.
+Keep the summary short and easy to read.
+
+THE GIT DIFF TO BE SUMMARIZED:
+{{ file_diff }}
+
+THE SUMMARY:
 ```
 
 **标题生成**（`title_commit.tera`）：
@@ -74,7 +92,17 @@ Exclude file names, diff markers and code snippets.
 You are an expert programmer generating a concise commit title.
 Summarize the change in a single short sentence using the imperative mood.
 Ignore file names and diff details.
+
+EXAMPLE SUMMARY COMMENTS:
+- Raise the amount of returned recordings
+- Switch to internal API for completions
+- Lower numeric tolerance for test files
+
+THE FILE SUMMARIES:
+{{ summary_points }}
+
 Write only one line, no more than 50 characters.
+Respond with just the title text.
 ```
 
 **类型分类**（`conventional_commit.tera`）：
@@ -174,7 +202,7 @@ Rules:
 |------|-----------|-----------|---------|---------------|
 | **输入** | `git diff --staged` 整体 | 按文件拆分 diff | 按文件拆分 + git stat | 按文件拆分 + ChangeKind 权重 |
 | **Prompt 策略** | 单次 end-to-end | N+2 步流水线 | map-reduce + tool calling | 单次调用 + 权重差异化 |
-| **输出格式** | 纯文本 | 纯文本 | 结构化 JSON（tool calling） | 纯文本 |
+| **输出格式** | 纯文本 | 纯文本 | 结构化 JSON（tool calling） | 结构化 JSON（`response_format: json_object`，已实现） |
 | **大 diff 处理** | 截断到 max_tokens | 逐文件摘要 | map-reduce 并行分析 | 截断 + weight 压缩 |
 | **Commit 规范** | Conventional / GitMoji / commitlint | Conventional | Conventional（可自定义 type） | Conventional |
 | **本地模型** | Ollama / llama.cpp | 无 | LiteLLM proxy | 无 |
@@ -268,8 +296,8 @@ NeatGit 当前的实现已有一些业界没有的独特设计：
 
 | 优先级 | 方向 | 参考来源 | 说明 |
 |--------|------|---------|------|
-| P0 | **结构化输出** | llm-git | 用 tool calling / JSON schema 代替纯文本解析，避免 LLM 输出格式不稳定 |
-| P0 | **"不编造"约束** | 所有项目 | 在 system prompt 中明确要求"不编造 diff 中没有的内容" |
+| P0 | **结构化输出** | llm-git | 用 tool calling / JSON schema 代替纯文本解析——已实现（`response_format: json_object` + `CommitMessageCandidate`，见 AI_COMMIT_GUIDE） |
+| P0 | **"不编造"约束** | 所有项目 | 在 system prompt 中明确要求"不编造 diff 中没有的内容"——已实现（`defaultSystemPrompt`） |
 | P1 | **多步流水线** | gptcommit | 大 diff 时按文件拆分摘要再汇总，避免截断丢失信息 |
 | P1 | **用户上下文** | opencommit | 允许用户输入额外上下文（如 issue 号、修改原因），融入 prompt |
 | P2 | **Commit 规范可定制** | opencommit / llm-git | 支持 GitMoji、commitlint 等不同规范 |
@@ -279,7 +307,7 @@ NeatGit 当前的实现已有一些业界没有的独特设计：
 
 ### 6.3 推荐的 Prompt 优化方向
 
-基于调研，建议在现有 prompt 基础上增加以下约束：
+基于调研的 prompt 优化建议——下列 5 条已全部落地于 `CommitPromptBuilder.defaultSystemPrompt`，保留作为设计依据：
 
 ```
 1. 明确"不编造"：Do not invent changes, behavior, or reasons not visible in the diff.
@@ -293,79 +321,7 @@ NeatGit 当前的实现已有一些业界没有的独特设计：
 
 ---
 
-## 七、附录：各项目 Prompt 全文
-
-### 7.1 opencommit — 完整 prompt（`src/prompts.ts`）
-
-核心 system prompt：
-
-```
-You are to act as an author of a commit message in git.
-Your mission is to create clean and comprehensive commit messages as per the
-Conventional Commit Convention and explain WHAT were the changes and mainly WHY
-the changes were done.
-
-I'll send you an output of 'git diff --staged' command, and you are to convert
-it into a commit message.
-
-Do not preface the commit with anything, except for the conventional commit
-keywords: fix, feat, build, chore, ci, docs, style, refactor, perf, test.
-
-Don't add any descriptions to the commit, only commit message.
-Use the present tense. Lines must not be longer than 74 characters.
-Use English for the commit message.
-```
-
-GitMoji 模式下额外增加 emoji 映射表（10 个常用 / 完整 60+ 个）。
-
-### 7.2 gptcommit — 模板文件
-
-**文件摘要**（`summarize_file_diff.tera`）：
-
-```
-You are an expert programmer summarizing the following git diff.
-Produce concise bullet points describing the key changes.
-List at most five points for brevity.
-Use the imperative mood and start each line with `-`.
-Exclude file names, diff markers and code snippets.
-Keep the summary short and easy to read.
-
-THE GIT DIFF TO BE SUMMARIZED:
-```
-{{ file_diff }}
-```
-
-THE SUMMARY:
-```
-
-**标题生成**（`title_commit.tera`）：
-
-```
-You are an expert programmer generating a concise commit title.
-Summarize the change in a single short sentence using the imperative mood.
-Ignore file names and diff details.
-
-EXAMPLE SUMMARY COMMENTS:
-- Raise the amount of returned recordings
-- Switch to internal API for completions
-- Lower numeric tolerance for test files
-
-THE FILE SUMMARIES:
-```
-{{ summary_points }}
-```
-
-Write only one line, no more than 50 characters.
-Respond with just the title text.
-```
-
-### 7.3 llm-git — Map-Reduce prompt
-
-见第二章"架构 3"中的完整 prompt 引用。
-
----
-
-## 八、参考链接
+## 七、参考链接
 
 - https://github.com/di-sukharev/opencommit
 - https://github.com/zurawiki/gptcommit
@@ -373,3 +329,5 @@ Respond with just the title text.
 - https://github.com/can1357/llm-git
 - https://www.conventionalcommits.org
 - https://gitmoji.dev
+
+<!-- 该文档整理/压缩于 2026-10-21 -->

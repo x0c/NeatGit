@@ -14,3 +14,7 @@ DerivedData/
 /.build-xcode/
 /Web/MonacoDiff/node_modules/
 /NeatGitApp/Resources/MonacoDiff/
+
+# 本地临时文件（不入公开仓库）
+AGENTS.md.tmp
+.doc-init-project-inventory.json

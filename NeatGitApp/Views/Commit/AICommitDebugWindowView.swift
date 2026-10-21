@@ -4,6 +4,7 @@ import SwiftUI
 struct AICommitDebugWindowView: View {
     static let windowID = "ai-commit-debug"
 
+    @Environment(\.dismissWindow) private var dismissWindow
     let debugStore: AICommitDebugStore
 
     var body: some View {
@@ -14,7 +15,7 @@ struct AICommitDebugWindowView: View {
                         header(for: session)
 
                         ForEach(session.attempts) { attempt in
-                            attemptCard(attempt)
+                            attemptGroup(attempt)
                         }
                     }
                     .padding(20)
@@ -24,86 +25,76 @@ struct AICommitDebugWindowView: View {
                 ContentUnavailableView(
                     "还没有 AI 调试记录",
                     systemImage: "ladybug",
-                    description: Text("点击提交栏旁边的调试按钮，再执行一次 AI 生成 commit message，就能在这里看到最终发给模型的输入。")
+                    description: Text("执行一次 AI 生成提交说明后，可以在这里查看发给模型的输入和返回结果。")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationTitle("AI Commit Debug")
+        .navigationTitle("AI 提交调试")
         .toolbar {
-            ToolbarItemGroup {
-                Button("复制最新 User Prompt", action: copyLatestUserPrompt)
+            ToolbarItem {
+                Button("复制最新用户提示词", systemImage: "doc.on.doc", action: copyLatestUserPrompt)
                     .disabled(debugStore.latestSession?.attempts.last == nil)
-
-                Button("关闭") {
-                    NSApp.keyWindow?.close()
+            }
+            ToolbarSpacer(.fixed)
+            ToolbarItem {
+                Button("关闭", systemImage: "xmark") {
+                    dismissWindow(id: Self.windowID)
                 }
             }
         }
         .frame(minWidth: 760, minHeight: 560)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(.background)
     }
 
-    @ViewBuilder
     private func header(for session: AICommitDebugSession) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(summaryText(for: session))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 8) {
+                    infoRow(title: "服务地址", value: session.baseURL)
+                    infoRow(title: "模型", value: session.model)
+                    infoRow(title: "开始时间", value: timestampText(for: session.startedAt))
+                    infoRow(title: "完成时间", value: session.completedAt.map(timestampText(for:)) ?? "进行中")
+                }
+
+                debugSection(title: "最终结果", text: session.finalMessage ?? session.finalErrorMessage ?? "尚未完成")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
             Text(session.repositoryName)
-                .font(.title2.weight(.semibold))
-
-            Text(summaryText(for: session))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            infoGrid(
-                rows: [
-                    ("Base URL", session.baseURL),
-                    ("Model", session.model),
-                    ("开始时间", timestampText(for: session.startedAt)),
-                    ("完成时间", session.completedAt.map(timestampText(for:)) ?? "进行中"),
-                    ("最终结果", session.finalMessage ?? session.finalErrorMessage ?? "尚未完成")
-                ]
-            )
+                .font(.headline)
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
     }
 
-    @ViewBuilder
-    private func attemptCard(_ attempt: AICommitDebugAttempt) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(attempt.title)
-                    .font(.headline)
-
-                Spacer()
-
-                Text(timestampText(for: attempt.createdAt))
+    private func attemptGroup(_ attempt: AICommitDebugAttempt) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                LabeledContent("请求时间", value: timestampText(for: attempt.createdAt))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
 
-            debugSection(title: "System Prompt", text: attempt.systemPrompt)
-            debugSection(title: "User Prompt", text: attempt.userPrompt)
+                debugSection(title: "系统提示词", text: attempt.systemPrompt)
+                debugSection(title: "用户提示词", text: attempt.userPrompt)
 
-            if let rawResponse = attempt.rawResponse, !rawResponse.isEmpty {
-                debugSection(title: "Raw Response", text: rawResponse)
-            }
+                if let rawResponse = attempt.rawResponse, !rawResponse.isEmpty {
+                    debugSection(title: "原始响应", text: rawResponse)
+                }
 
-            if let errorMessage = attempt.errorMessage, !errorMessage.isEmpty {
-                debugSection(title: "Error", text: errorMessage)
+                if let errorMessage = attempt.errorMessage, !errorMessage.isEmpty {
+                    debugSection(title: "错误信息", text: errorMessage)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Text(attempt.title)
+                .font(.headline)
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
     }
 
-    @ViewBuilder
     private func debugSection(title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
@@ -111,37 +102,24 @@ struct AICommitDebugWindowView: View {
 
             ScrollView(.horizontal) {
                 Text(text)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(.caption, design: .monospaced))
+                    .fixedSize(horizontal: true, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
             }
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.white)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-            )
+            .background(.background)
         }
     }
 
-    @ViewBuilder
-    private func infoGrid(rows: [(String, String)]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                HStack(alignment: .top, spacing: 12) {
-                    Text(row.0)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 72, alignment: .leading)
-
-                    Text(row.1)
-                        .font(.caption)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+    private func infoRow(title: String, value: String) -> some View {
+        GridRow(alignment: .top) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .font(.caption)
     }
 
     private func summaryText(for session: AICommitDebugSession) -> String {
@@ -149,7 +127,11 @@ struct AICommitDebugWindowView: View {
     }
 
     private func timestampText(for date: Date) -> String {
-        date.formatted(date: .abbreviated, time: .standard)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: date)
     }
 
     private func copyLatestUserPrompt() {

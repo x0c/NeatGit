@@ -6,47 +6,37 @@ struct RepositoryPreviewPane: View {
     let hoveredFile: RepositoryFileItem?
     let cacheRevision: Int
 
-    @StateObject private var diffStore = RepositoryDiffStore()
+    @State private var diffStore = RepositoryDiffStore()
 
     var body: some View {
-        VStack(spacing: 0) {
-            RepositoryPreviewHeader(
-                title: headerTitle,
-                subtitle: headerSubtitle,
-                showsVisibilityToggle: diffStore.showsVisibilityToggle,
-                visibilityToggleIsActive: diffStore.showChangesOnly,
-                visibilityToggleTitle: diffStore.visibilityToggleTitle,
-                visibilityToggleSystemImage: diffStore.visibilityToggleSystemImage,
-                onToggleVisibility: diffStore.toggleShowChangesOnly
-            )
-
-            Divider()
-
-            previewContent
+        previewContent
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.white)
-        }
-        .background(Color.white)
-        .task(id: selectionSignature) {
-            diffStore.select(
-                repository: repository,
-                selectedFiles: selectedFiles,
-                cacheRevision: cacheRevision
-            )
-        }
-        .task(id: hoverPrefetchSignature) {
-            diffStore.scheduleHoverPrefetch(
-                repository: repository,
-                hoveredFile: hoveredFile,
-                cacheRevision: cacheRevision
-            )
-        }
+            .safeAreaBar(edge: .top, spacing: 0) {
+                previewHeader
+            }
+            .task(id: selectionSignature) {
+                diffStore.select(
+                    repository: repository,
+                    selectedFiles: selectedFiles,
+                    cacheRevision: cacheRevision
+                )
+            }
+            .task(id: hoverPrefetchSignature) {
+                diffStore.scheduleHoverPrefetch(
+                    repository: repository,
+                    hoveredFile: hoveredFile,
+                    cacheRevision: cacheRevision
+                )
+            }
     }
 
-    @ViewBuilder
     private var previewContent: some View {
         ZStack {
-            MonacoDiffView(payload: diffStore.payloadForDisplay)
+            MonacoDiffView(
+                payload: diffStore.payloadForDisplay,
+                showChangesOnly: diffStore.showChangesOnly
+            )
+                .accessibilityIdentifier("file-diff-preview")
 
             if diffStore.showsPlaceholder {
                 ContentUnavailableView(
@@ -55,24 +45,73 @@ struct RepositoryPreviewPane: View {
                     description: Text(diffStore.messageBody)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.white)
+                .background(.background)
             }
 
             if diffStore.isLoading {
-                ProgressView("正在生成文件 diff...")
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 14)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                ProgressView("正在读取文件差异…")
+                    .padding()
+                    .background(.regularMaterial, in: .rect(cornerRadius: 12))
             }
         }
     }
 
-    private var headerTitle: String {
-        diffStore.headerTitle
+    private var previewHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(diffStore.headerTitle)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(diffStore.headerTitle)
+
+            HStack {
+                if diffStore.availableModes.count > 1 {
+                    Picker("对比版本", selection: modeBinding) {
+                        ForEach(diffStore.availableModes) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .accessibilityIdentifier("diff-mode")
+                } else {
+                    Text(diffStore.headerSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                if diffStore.showsVisibilityToggle {
+                    Toggle("只看变更", isOn: changesOnlyBinding)
+                        .toggleStyle(.button)
+                        .controlSize(.small)
+                        .help(diffStore.visibilityToggleTitle)
+                        .accessibilityIdentifier("diff-changes-only")
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
-    private var headerSubtitle: String {
-        diffStore.headerSubtitle
+    private var modeBinding: Binding<RepositoryDiffMode> {
+        Binding(
+            get: { diffStore.activeMode },
+            set: { diffStore.selectMode($0) }
+        )
+    }
+
+    private var changesOnlyBinding: Binding<Bool> {
+        Binding(
+            get: { diffStore.showChangesOnly },
+            set: { showChangesOnly in
+                if showChangesOnly != diffStore.showChangesOnly {
+                    diffStore.toggleShowChangesOnly()
+                }
+            }
+        )
     }
 
     private var selectionSignature: String {
@@ -82,46 +121,5 @@ struct RepositoryPreviewPane: View {
 
     private var hoverPrefetchSignature: String {
         "\(repository?.id ?? "no-repository")::\(cacheRevision)::\(hoveredFile?.id ?? "no-hover")"
-    }
-}
-
-private struct RepositoryPreviewHeader: View {
-    let title: String
-    let subtitle: String
-    let showsVisibilityToggle: Bool
-    let visibilityToggleIsActive: Bool
-    let visibilityToggleTitle: String
-    let visibilityToggleSystemImage: String
-    let onToggleVisibility: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .lineLimit(1)
-
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 12)
-
-            if showsVisibilityToggle {
-                Button(action: onToggleVisibility) {
-                    Image(systemName: visibilityToggleSystemImage)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(visibilityToggleIsActive ? .primary : .secondary)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(visibilityToggleTitle)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
     }
 }

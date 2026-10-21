@@ -1,8 +1,27 @@
 :root {
+  /* 两套外观共用的自定义属性；[data-appearance] 只覆盖取值，此处只声明浅色默认。 */
+  color-scheme: light dark;
+  --neatgit-page-background: #fbfbfd;
+  --neatgit-text-color: #24303c;
+  background: var(--neatgit-page-background);
+  color: var(--neatgit-text-color);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+:root[data-appearance='light'] {
   color-scheme: light;
-  background: #eef2f7;
-  color: #1f2933;
-  font-family: "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+/* 深色下页面底色与 monaco 的 editor.background (#1F1F22) 对齐，避免四周出现亮边。 */
+:root[data-appearance='dark'] {
+  color-scheme: dark;
+  --neatgit-page-background: #1f1f22;
+  --neatgit-text-color: #d3d6db;
+}
+
+:root[data-high-contrast='true'] {
+  --neatgit-page-background: Canvas;
+  --neatgit-text-color: CanvasText;
 }
 
 html,
@@ -13,9 +32,7 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), transparent 34%),
-    linear-gradient(180deg, #f6f8fb 0%, #ebeff5 100%);
+  background: var(--neatgit-page-background);
 }
 
 .page {
@@ -29,9 +46,5 @@ body {
 .editor-surface {
   min-height: 0;
   height: 100%;
-  border: 1px solid rgba(148, 163, 184, 0.18);
   overflow: hidden;
-  box-shadow:
-    0 10px 30px rgba(15, 23, 42, 0.06),
-    0 1px 0 rgba(255, 255, 255, 0.85) inset;
 }

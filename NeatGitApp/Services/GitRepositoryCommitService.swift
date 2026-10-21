@@ -30,9 +30,7 @@ final class GitRepositoryCommitService: @unchecked Sendable {
             throw GitCommandError(message: "请输入 commit message。")
         }
 
-        let committableItems = request.changedItems.filter { item in
-            item.isCheckableForCommit && !CommitExclusion.shouldExcludeFromDefaultCommit(item)
-        }
+        let committableItems = request.changedItems.filter(\.isCommittableByDefault)
 
         try synchronizeIndex(
             committableItems: committableItems,

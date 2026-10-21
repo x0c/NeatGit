@@ -2,23 +2,35 @@ import Foundation
 
 final class GitRepositoryStatusLoader: @unchecked Sendable {
     func loadSnapshot(for repository: GitRepository) async throws -> RepositoryFileSnapshot {
-        try await Task.detached(priority: .userInitiated) { [self] in
-            try self.makeSnapshot(for: repository)
+        // 两条 Git 命令并行执行，首次加载耗时从两者之和降为最大值。
+        async let statusData = Task.detached(priority: .userInitiated) { [self] in
+            try self.loadGitOutput(
+                in: repository.path,
+                arguments: ["status", "--porcelain=v2", "--ignored=matching", "--untracked-files=all", "-z"],
+                defaultMessage: "Git 命令执行失败。"
+            )
         }.value
+
+        async let skippedData = Task.detached(priority: .userInitiated) { [self] in
+            try self.loadGitOutput(
+                in: repository.path,
+                arguments: ["ls-files", "-t", "-z"],
+                defaultMessage: "Git 命令执行失败。"
+            )
+        }.value
+
+        return try makeSnapshot(
+            statusData: try await statusData,
+            skippedData: try await skippedData,
+            repository: repository
+        )
     }
 
-    private func makeSnapshot(for repository: GitRepository) throws -> RepositoryFileSnapshot {
-        let statusData = try loadGitOutput(
-            in: repository.path,
-            arguments: ["status", "--porcelain=v2", "--ignored=matching", "--untracked-files=all", "-z"],
-            defaultMessage: "Git 命令执行失败。"
-        )
-        let skippedData = try loadGitOutput(
-            in: repository.path,
-            arguments: ["ls-files", "-t", "-z"],
-            defaultMessage: "Git 命令执行失败。"
-        )
-
+    private func makeSnapshot(
+        statusData: Data,
+        skippedData: Data,
+        repository: GitRepository
+    ) throws -> RepositoryFileSnapshot {
         let statusEntries = try parseStatusEntries(from: statusData)
         let skippedPaths = parseSkippedPaths(from: skippedData)
         let skippedSet = Set(skippedPaths)
@@ -190,6 +202,11 @@ final class GitRepositoryStatusLoader: @unchecked Sendable {
         )
     }
 
+    /// 区分文件与目录。
+    ///
+    /// Git 在 `--untracked-files=all` 下会把未跟踪目录展开到文件，
+    /// 但被忽略的目录仍以尾斜杠整体上报（实测 `! 已忽略目录/`），
+    /// 所以尾斜杠分支不能去掉；其余情形才需要查磁盘。
     private func fileKind(for path: String, repositoryPath: String) -> RepositoryFileKind {
         if path.hasSuffix("/") {
             return .directory
@@ -223,8 +240,8 @@ final class GitRepositoryStatusLoader: @unchecked Sendable {
             return fileNameOrder == .orderedAscending
         }
 
-        let lhsParentPath = lhs.parentPathDisplay ?? ""
-        let rhsParentPath = rhs.parentPathDisplay ?? ""
+        let lhsParentPath = lhs.parentPath ?? ""
+        let rhsParentPath = rhs.parentPath ?? ""
         let parentPathOrder = lhsParentPath.localizedCaseInsensitiveCompare(rhsParentPath)
         if parentPathOrder != .orderedSame {
             return parentPathOrder == .orderedAscending

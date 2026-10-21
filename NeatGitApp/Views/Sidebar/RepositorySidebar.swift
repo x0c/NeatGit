@@ -2,10 +2,8 @@ import SwiftUI
 
 struct RepositorySidebar: View {
     private enum Layout {
-        static let minWidth: CGFloat = 260
-        static let idealWidth: CGFloat = 340
-        static let groupSpacing: CGFloat = 4
-        static let listSpacing: CGFloat = 5
+        static let minWidth: CGFloat = 240
+        static let idealWidth: CGFloat = 300
     }
 
     let groups: [RepositoryGroup]
@@ -15,183 +13,143 @@ struct RepositorySidebar: View {
     @Binding var expandedGroupID: RepositoryGroup.ID?
     let onToggleGroup: (RepositoryGroup.ID) -> Void
     let onToggleRepositoryStar: (GitRepository) -> Void
+    let onPrefetchRepository: (GitRepository) -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: Layout.listSpacing) {
-                    ForEach(groups) { group in
-                        VStack(alignment: .leading, spacing: Layout.groupSpacing) {
-                            Button {
-                                onToggleGroup(group.id)
-                            } label: {
-                                RepositoryGroupRow(
-                                    group: group,
-                                    isExpanded: expandedGroupID == group.id
-                                )
+        // 选择、键盘导航、折叠动画全部交给系统 List，
+        // 这里只负责行内的排版与星标视觉。
+        List(selection: $selectionPath) {
+            ForEach(groups) { group in
+                DisclosureGroup(isExpanded: expansionBinding(for: group)) {
+                    ForEach(group.repositories) { repository in
+                        RepositoryRow(
+                            repository: repository,
+                            isStarred: starredRepositoryPaths.contains(repository.id),
+                            onToggleStar: {
+                                onToggleRepositoryStar(repository)
+                            },
+                            onPrefetch: {
+                                onPrefetchRepository(repository)
                             }
-                            .buttonStyle(.plain)
-
-                            if expandedGroupID == group.id {
-                                VStack(alignment: .leading, spacing: Layout.groupSpacing) {
-                                    ForEach(group.repositories) { repository in
-                                        RepositoryRow(
-                                            repository: repository,
-                                            isSelected: selectionPath == repository.id,
-                                            isStarred: starredRepositoryPaths.contains(repository.id),
-                                            onSelect: {
-                                                selectionPath = repository.id
-                                            },
-                                            onToggleStar: {
-                                                withAnimation(.easeInOut(duration: 0.16)) {
-                                                    onToggleRepositoryStar(repository)
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                                .padding(.leading, 20)
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .move(edge: .top).combined(with: .opacity),
-                                        removal: .move(edge: .top).combined(with: .opacity)
-                                    )
-                                )
-                            }
-                        }
+                        )
+                        .tag(repository.id)
+                        // 组标题禁用选择后会传播到子行，这里显式恢复可选。
+                        .selectionDisabled(false)
+                        .accessibilityIdentifier("repository-\(repository.id)")
                     }
+                } label: {
+                    RepositoryGroupLabel(group: group)
+                        .accessibilityIdentifier("repository-group-\(group.id)")
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                // 分组只用于展开/折叠，不参与仓库选择。
+                .selectionDisabled()
             }
-            .background(Color.white)
         }
-        .background(Color.white)
+        .listStyle(.sidebar)
         .frame(minWidth: Layout.minWidth, idealWidth: Layout.idealWidth, maxHeight: .infinity)
         .navigationSplitViewColumnWidth(min: Layout.minWidth, ideal: Layout.idealWidth)
-        .toolbar(removing: .sidebarToggle)
+        .accessibilityIdentifier("repository-sidebar")
         .overlay {
             if groups.isEmpty {
-                ContentUnavailableView(
-                    "暂无项目",
-                    systemImage: "folder.badge.questionmark",
-                    description: Text(isScanning ? "正在扫描..." : "等待首次自动扫描完成")
-                )
+                ContentUnavailableView {
+                    Label("暂无项目", systemImage: "folder.badge.questionmark")
+                } description: {
+                    Text(isScanning ? "正在扫描本地仓库…" : "等待首次自动扫描完成")
+                }
             }
         }
+    }
+
+    /// 把「同时只展开一组」的既有策略接到 DisclosureGroup 的布尔绑定上。
+    ///
+    /// 展开与折叠都转交 `onToggleGroup`，由 ContentView 继续决定互斥逻辑，
+    /// 避免这里和外部各存一份展开状态。
+    private func expansionBinding(for group: RepositoryGroup) -> Binding<Bool> {
+        Binding(
+            get: { expandedGroupID == group.id },
+            set: { isExpanded in
+                guard isExpanded != (expandedGroupID == group.id) else { return }
+                onToggleGroup(group.id)
+            }
+        )
     }
 }
 
-private struct RepositoryGroupRow: View {
-    private enum Layout {
-        static let horizontalPadding: CGFloat = 9
-        static let iconWidth: CGFloat = 16
-        static let rowMinHeight: CGFloat = 31
-    }
-
+private struct RepositoryGroupLabel: View {
     let group: RepositoryGroup
-    let isExpanded: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: isExpanded ? "folder.fill" : "folder")
-                .foregroundStyle(Color.accentColor)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: Layout.iconWidth)
+        HStack(spacing: Theme.Spacing.xs) {
+            Text(group.title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.head)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(group.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+            Spacer(minLength: Theme.Spacing.xs)
 
-                Text("\(group.repositories.count) 个项目")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            // 组内有收藏项目时给个小星标，折叠状态下也能看出哪组重要。
+            if group.starredRepositoryCount > 0 {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(Theme.Palette.starred)
             }
 
-            Spacer(minLength: 12)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
+            Text(group.repositories.count, format: .number)
+                .font(Theme.Font.count)
                 .foregroundStyle(.tertiary)
-                .rotationEffect(.degrees(isExpanded ? 90 : 0))
         }
-        .padding(.horizontal, Layout.horizontalPadding)
-        .frame(maxWidth: .infinity, minHeight: Layout.rowMinHeight, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color(nsColor: .controlColor).opacity(0.6))
-        )
-        .contentShape(Rectangle())
+        .help(group.parentPath)
     }
 }
 
 private struct RepositoryRow: View {
-    private enum Layout {
-        static let horizontalPadding: CGFloat = 9
-        static let iconWidth: CGFloat = 16
-        static let starButtonSize: CGFloat = 16
-        static let rowMinHeight: CGFloat = 27
-    }
-
     let repository: GitRepository
-    let isSelected: Bool
     let isStarred: Bool
-    let onSelect: () -> Void
     let onToggleStar: () -> Void
+    let onPrefetch: () -> Void
+
+    @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button(action: onSelect) {
-                HStack(spacing: 8) {
-                    Image(systemName: "shippingbox")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                        .frame(width: Layout.iconWidth)
+        Label {
+            HStack(spacing: Theme.Spacing.xs) {
+                Text(repository.name)
+                    .font(.system(size: 12.5))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
-                    Text(repository.name)
-                        .font(.callout)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                Spacer(minLength: Theme.Spacing.xs)
 
-                    Spacer(minLength: 0)
+                // 未收藏时只在悬停状态下露出星标，平时不干扰列表。
+                if isStarred || isHovering {
+                    Button(action: onToggleStar) {
+                        Image(systemName: isStarred ? "star.fill" : "star")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(isStarred ? AnyShapeStyle(Theme.Palette.starred) : AnyShapeStyle(.tertiary))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(isStarred ? "取消收藏 \(repository.name)" : "收藏项目 \(repository.name)")
+                    .help(isStarred ? "取消收藏" : "收藏项目")
+                    .accessibilityIdentifier("repository-star-\(repository.id)")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-
-            Button(action: onToggleStar) {
-                Image(systemName: isStarred ? "star.fill" : "star")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(
-                        isStarred
-                            ? AnyShapeStyle(Color.yellow)
-                            : AnyShapeStyle(Color(nsColor: .tertiaryLabelColor))
-                    )
-                    .frame(width: Layout.starButtonSize, height: Layout.starButtonSize)
-            }
-            .buttonStyle(.plain)
-            .help(isStarred ? "取消收藏" : "收藏项目")
+        } icon: {
+            Image(systemName: "folder.fill")
         }
-        .padding(.horizontal, Layout.horizontalPadding)
-        .frame(maxWidth: .infinity, minHeight: Layout.rowMinHeight, alignment: .leading)
-        .background(selectionBackground)
-        .contentShape(Rectangle())
-    }
-}
-
-private extension RepositoryRow {
-    @ViewBuilder
-    var selectionBackground: some View {
-        if isSelected {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.accentColor.opacity(0.16))
-        } else {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(.clear)
+        .onHover { isHovering in
+            self.isHovering = isHovering
+            // 悬停即预热仓库状态，点击时数据已在缓存里，选中无需等待。
+            if isHovering {
+                onPrefetch()
+            }
+        }
+        .help(repository.path)
+        .contextMenu {
+            Button(isStarred ? "取消收藏" : "收藏项目", systemImage: isStarred ? "star.slash" : "star") {
+                onToggleStar()
+            }
         }
     }
 }

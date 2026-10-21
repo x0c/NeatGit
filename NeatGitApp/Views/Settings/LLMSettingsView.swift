@@ -5,42 +5,17 @@ struct LLMSettingsView: View {
 
     var body: some View {
         Form {
-            Section("AI 提交") {
-                TextField("Base URL", text: $settingsStore.baseURL)
-                    .textFieldStyle(.roundedBorder)
+            Section("服务连接") {
+                TextField("服务地址", text: $settingsStore.baseURL)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("llm-base-url")
 
-                TextField("Model", text: $settingsStore.model)
-                    .textFieldStyle(.roundedBorder)
+                TextField("模型", text: $settingsStore.model)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("llm-model")
 
-                SecureField("API Key", text: $settingsStore.apiKey)
-                    .textFieldStyle(.roundedBorder)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("System Prompt")
-                            .font(.headline)
-
-                        Spacer()
-
-                        Button("恢复默认") {
-                            settingsStore.resetSystemPrompt()
-                        }
-                        .buttonStyle(.link)
-                    }
-
-                    TextEditor(text: $settingsStore.systemPrompt)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(minHeight: 220)
-                        .padding(8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color(nsColor: .textBackgroundColor))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                        )
-                }
+                SecureField("API 密钥", text: $settingsStore.apiKey)
+                    .accessibilityIdentifier("llm-api-key")
 
                 Text("Base URL 填接口前缀即可，例如 DeepSeek 用 https://api.deepseek.com，OpenAI 可用 https://api.openai.com/v1。")
                     .font(.caption)
@@ -50,18 +25,30 @@ struct LLMSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Text("System Prompt 会直接作为 AI 提交的系统提示词发送，可在调试窗口查看最终发出的内容。")
+                Text("API Key 会保存在当前 macOS 用户的本地设置中，不再读取 Keychain。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
 
-                Text("API Key 会保存在当前 macOS 用户的本地设置中，不再读取 Keychain。")
+            Section("生成说明") {
+                TextEditor(text: $settingsStore.systemPrompt)
+                    .textEditorStyle(.automatic)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(minHeight: 220)
+                    .accessibilityLabel("系统提示词")
+                    .accessibilityIdentifier("llm-system-prompt")
+
+                Button("恢复默认") {
+                    settingsStore.resetSystemPrompt()
+                }
+
+                Text("System Prompt 会直接作为 AI 提交的系统提示词发送，可在调试窗口查看最终发出的内容。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .padding(20)
-        .frame(width: 520)
+        .frame(minWidth: 520, idealWidth: 600, maxWidth: 720, minHeight: 500, idealHeight: 600)
         .alert(
             "保存失败",
             isPresented: Binding(

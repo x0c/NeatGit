@@ -66,10 +66,6 @@ struct RepositoryFileItem: Identifiable, Hashable, Sendable {
         return parentPath.isEmpty || parentPath == "." ? nil : parentPath
     }
 
-    var parentPathDisplay: String? {
-        parentPath
-    }
-
     var statusSummary: String? {
         state.statusSummary
     }
@@ -97,6 +93,14 @@ struct RepositoryFileItem: Identifiable, Hashable, Sendable {
 
     var isCheckableForCommit: Bool {
         section == .changed && !hasConflict
+    }
+
+    /// 默认提交会包含这个文件吗：可勾选且未被硬排除规则命中。
+    ///
+    /// 判定原先在提交服务与状态栏文案处各写一遍，两处一旦漂移，
+    /// 就会出现「文案说提交 3 个、实际提交 2 个」的错位。
+    var isCommittableByDefault: Bool {
+        isCheckableForCommit && !CommitExclusion.shouldExcludeFromDefaultCommit(self)
     }
 
     var isStaged: Bool {
@@ -458,7 +462,7 @@ private struct RepositoryFileGroupingCandidate {
     let isMeaningful: Bool
 }
 
-struct RepositoryFileSnapshot: Sendable {
+struct RepositoryFileSnapshot: Sendable, Equatable {
     let repositoryPath: String
     let changedFiles: [RepositoryFileItem]
     let skippedFiles: [RepositoryFileItem]

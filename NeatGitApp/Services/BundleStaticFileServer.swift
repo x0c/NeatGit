@@ -18,7 +18,13 @@ final class BundleStaticFileServer: @unchecked Sendable {
 
         stop()
 
-        let listener = try NWListener(using: .tcp, on: .any)
+        // 只绑 127.0.0.1。默认的 `.any` 会监听所有网卡（实测 lsof 显示 `*:port`），
+        // 把 Monaco 静态资源和整个资源目录暂存暴露给同局域网；
+        // 绑定回环地址后 lsof 变为 `127.0.0.1:port`，外部主机无法连入。
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+
+        let listener = try NWListener(using: parameters)
         let startupState = StartupState()
         listener.newConnectionHandler = { [weak self] connection in
             self?.handle(connection: connection)
@@ -70,6 +76,43 @@ final class BundleStaticFileServer: @unchecked Sendable {
         rootDirectoryURL = nil
     }
 
+    /// 把请求路径解成资源目录内的真实文件，越界或不存在返回 nil。
+    ///
+    /// 独立成静态方法是为了让安全校验可以被单独验证：
+    /// 服务本身是进程内单例，测试若为了验证路径规则去改它的根目录，
+    /// 会连带把同进程里的 Monaco 预览用例一起弄挂。
+    static func resolveFileURL(for requestPath: String, rootDirectoryURL: URL) -> URL? {
+        let rawPath = requestPath.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? requestPath
+        let trimmedPath = rawPath == "/" ? "index.html" : String(rawPath.drop(while: { $0 == "/" }))
+        let decodedPath = trimmedPath.removingPercentEncoding ?? trimmedPath
+
+        let rootURL = rootDirectoryURL.standardizedFileURL
+        let candidateURL = rootURL
+            .appendingPathComponent(decodedPath)
+            .standardizedFileURL
+
+        // 按路径分量逐级比较，不用字符串前缀。
+        // 字符串 hasPrefix 会把同级的「同名前缀」目录误当成子目录：
+        // 实测请求 `/../<资源目录名>-secret/密钥.txt` 与 `%2e%2e` 编码形式
+        // 都能穿越到资源目录之外读文件，改成分量比较后两者均被拒绝。
+        let rootComponents = rootURL.pathComponents
+        let candidateComponents = candidateURL.pathComponents
+
+        guard
+            candidateComponents.count > rootComponents.count,
+            Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
+        else {
+            return nil
+        }
+
+        var isDirectory = ObjCBool(false)
+        guard FileManager.default.fileExists(atPath: candidateURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            return nil
+        }
+
+        return candidateURL
+    }
+
     private func handle(connection: NWConnection) {
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
@@ -85,20 +128,42 @@ final class BundleStaticFileServer: @unchecked Sendable {
         connection.start(queue: queue)
     }
 
-    private func receiveRequest(on connection: NWConnection) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, _, _ in
-            guard let self, let data, !data.isEmpty else {
+    private func receiveRequest(on connection: NWConnection, accumulated: Data = Data()) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, isComplete, _ in
+            guard let self else {
                 connection.cancel()
                 return
             }
 
-            let response = self.makeResponse(for: data)
+            var request = accumulated
+            if let data {
+                request.append(data)
+            }
+
+            guard !request.isEmpty else {
+                connection.cancel()
+                return
+            }
+
+            // TCP 不保证请求头一次读全：未读到空行分隔符就继续收，
+            // 否则请求被分片时会把半条报文当成非法请求返回 400。
+            if !Self.containsCompleteHeader(request), !isComplete, request.count < 64_000 {
+                self.receiveRequest(on: connection, accumulated: request)
+                return
+            }
+
+            let response = self.makeResponse(for: request)
             connection.send(content: response, contentContext: .defaultMessage, isComplete: true, completion: .contentProcessed { _ in
                 self.queue.asyncAfter(deadline: .now() + 0.5) {
                     connection.cancel()
                 }
             })
         }
+    }
+
+    /// HTTP 头部以连续的 CRLF CRLF 结束。
+    private static func containsCompleteHeader(_ data: Data) -> Bool {
+        data.range(of: Data("\r\n\r\n".utf8)) != nil || data.range(of: Data("\n\n".utf8)) != nil
     }
 
     private func makeResponse(for requestData: Data) -> Data {
@@ -140,25 +205,7 @@ final class BundleStaticFileServer: @unchecked Sendable {
 
     private func resolveFileURL(for requestPath: String) -> URL? {
         guard let rootDirectoryURL else { return nil }
-
-        let rawPath = requestPath.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? requestPath
-        let trimmedPath = rawPath == "/" ? "index.html" : String(rawPath.drop(while: { $0 == "/" }))
-        let decodedPath = trimmedPath.removingPercentEncoding ?? trimmedPath
-
-        let candidateURL = rootDirectoryURL
-            .appendingPathComponent(decodedPath)
-            .standardizedFileURL
-
-        guard candidateURL.path.hasPrefix(rootDirectoryURL.standardizedFileURL.path) else {
-            return nil
-        }
-
-        var isDirectory = ObjCBool(false)
-        guard FileManager.default.fileExists(atPath: candidateURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
-            return nil
-        }
-
-        return candidateURL
+        return Self.resolveFileURL(for: requestPath, rootDirectoryURL: rootDirectoryURL)
     }
 
     private func buildResponse(

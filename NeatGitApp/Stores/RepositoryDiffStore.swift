@@ -1,36 +1,50 @@
-import SwiftUI
+import Foundation
+import Observation
 
 @MainActor
-final class RepositoryDiffStore: ObservableObject {
+@Observable
+final class RepositoryDiffStore {
     private static let hoverPrefetchDelayNanoseconds: UInt64 = 60_000_000
-    private static let maxCachedDocuments = 12
+    private static let maxCachedDocuments = 24
 
-    @Published private(set) var document: RepositoryDiffDocument?
-    @Published private(set) var displayedDocument: RepositoryDiffDocument?
-    @Published private(set) var isLoading = false
-    @Published private(set) var showChangesOnly = false
-    @Published private(set) var headerTitle = "文件对比"
-    @Published private(set) var headerSubtitle = "选择一个文件"
-    @Published private(set) var messageTitle = "选择一个文件"
-    @Published private(set) var messageBody = "从左侧选择单个更改文件后，这里会展示单文件 diff 预览。"
+    private(set) var document: RepositoryDiffDocument?
+    private(set) var displayedDocument: RepositoryDiffDocument?
+    private(set) var isLoading = false
+    private(set) var showChangesOnly = false
+    private(set) var headerTitle = "文件对比"
+    private(set) var headerSubtitle = "选择一个文件"
+    private(set) var messageTitle = "选择一个文件"
+    private(set) var messageBody = "从左侧选择单个更改文件后，这里会展示单文件 diff 预览。"
 
+    @ObservationIgnored
     private let loader = GitRepositoryDiffLoader()
     private var currentRepository: GitRepository?
     private var currentItem: RepositoryFileItem?
+    @ObservationIgnored
     private var loadTask: Task<Void, Never>?
+    @ObservationIgnored
     private var hoverPrefetchTask: Task<Void, Never>?
+    @ObservationIgnored
     private var cachedDocuments: [CacheKey: RepositoryDiffDocument] = [:]
+    @ObservationIgnored
     private var cacheOrder: [CacheKey] = []
+    @ObservationIgnored
     private var inflightLoads: [CacheKey: Task<RepositoryDiffDocument, Error>] = [:]
+    @ObservationIgnored
     private var inflightLoadIDs: [CacheKey: UUID] = [:]
+    @ObservationIgnored
     private var cacheRevisions: [String: Int] = [:]
-    private var activeMode: RepositoryDiffMode = .staged
+    private(set) var activeMode: RepositoryDiffMode = .staged
 
     func select(
         repository: GitRepository?,
         selectedFiles: [RepositoryFileItem],
         cacheRevision: Int
     ) {
+        let retainedMode = currentRepository?.id == repository?.id
+            && selectedFiles.count == 1
+            && currentItem?.id == selectedFiles.first?.id ? activeMode : nil
+
         loadTask?.cancel()
         loadTask = nil
         hoverPrefetchTask?.cancel()
@@ -67,7 +81,7 @@ final class RepositoryDiffStore: ObservableObject {
             return
         }
 
-        guard let mode = displayableMode(for: item) else {
+        guard let mode = displayableMode(for: item, preferred: retainedMode) else {
             showPlaceholder(
                 title: unsupportedTitle(for: item),
                 body: unsupportedMessage(for: item)
@@ -115,12 +129,30 @@ final class RepositoryDiffStore: ObservableObject {
         }
     }
 
+    var availableModes: [RepositoryDiffMode] {
+        currentItem?.availableDiffModes ?? []
+    }
+
+    func selectMode(_ mode: RepositoryDiffMode) {
+        guard mode != activeMode, availableModes.contains(mode) else { return }
+        activeMode = mode
+
+        if let repository = currentRepository, let item = currentItem,
+           let cached = cachedDocument(for: repository, item: item, mode: mode) {
+            loadTask?.cancel()
+            applyDocument(cached, for: item)
+            return
+        }
+
+        loadCurrentSelection()
+    }
+
     func toggleShowChangesOnly() {
         showChangesOnly.toggle()
     }
 
     var payloadForDisplay: MonacoDiffPayload? {
-        displayedDocument?.monacoPayload(showChangesOnly: showChangesOnly)
+        displayedDocument?.monacoPayload
     }
 
     var showsPlaceholder: Bool {
@@ -128,7 +160,7 @@ final class RepositoryDiffStore: ObservableObject {
     }
 
     var showsVisibilityToggle: Bool {
-        currentItem != nil
+        document != nil
     }
 
     var visibilityToggleTitle: String {
@@ -147,8 +179,14 @@ final class RepositoryDiffStore: ObservableObject {
         return .workingTree
     }
 
-    private func displayableMode(for item: RepositoryFileItem) -> RepositoryDiffMode? {
+    private func displayableMode(
+        for item: RepositoryFileItem,
+        preferred retainedMode: RepositoryDiffMode? = nil
+    ) -> RepositoryDiffMode? {
         guard item.section == .changed else { return nil }
+        if let retainedMode, item.availableDiffModes.contains(retainedMode) {
+            return retainedMode
+        }
 
         let mode = preferredMode(for: item)
         guard item.availableDiffModes.contains(mode) else {

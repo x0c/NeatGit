@@ -49,12 +49,7 @@ final class CommitMessageGenerationService: @unchecked Sendable {
                     attemptTitle: "单次调用"
                 )
 
-                let message = normalizeGeneratedMessage(response)
-                guard !message.isEmpty else {
-                    Self.logger.error("LLM 返回空内容，请重试")
-                    throw GitCommandError(message: "AI 生成了空内容，请重试。")
-                }
-
+                let message = try extractCommitMessage(from: response)
                 await finishDebugSession(id: sessionID, finalMessage: message)
                 return message
             } catch {
@@ -80,10 +75,19 @@ final class CommitMessageGenerationService: @unchecked Sendable {
                     .init(role: "system", content: systemPrompt),
                     .init(role: "user", content: userPrompt)
                 ],
-                configuration: configuration
+                configuration: configuration,
+                maxTokens: 1024,
+                responseFormat: .jsonObject,
+                disableThinking: true
             )
-            Self.logger.info("LLM 响应成功，长度=\(result.content.count)")
+            Self.logger.info("LLM 响应成功，长度=\(result.content.count)，finish=\(result.finishReason ?? "nil")")
             await recordDebugAttempt(sessionID: sessionID, title: attemptTitle, systemPrompt: systemPrompt, userPrompt: userPrompt, rawResponse: result.content, errorMessage: nil)
+
+            if result.finishReason == "length" {
+                // 即便 content 非空，length 截断也常导致 JSON 不完整
+                Self.logger.error("LLM 输出因 length 截断")
+            }
+
             return result.content
         } catch {
             await recordDebugAttempt(sessionID: sessionID, title: attemptTitle, systemPrompt: systemPrompt, userPrompt: userPrompt, rawResponse: nil, errorMessage: GitCommandError.describe(error))
@@ -91,19 +95,25 @@ final class CommitMessageGenerationService: @unchecked Sendable {
         }
     }
 
-    private func normalizeGeneratedMessage(_ response: String) -> String {
-        if let message = CommitMessageCandidate.extractSubjectFromRawResponse(response) {
+    private func extractCommitMessage(from response: String) throws -> String {
+        if let message = CommitMessageCandidate.extractSubjectFromRawResponse(response), !message.isEmpty {
             return message
         }
 
         let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.hasPrefix("{") else { return "" }
+        if trimmed.hasPrefix("{") {
+            throw GitCommandError(message: "AI 返回了不完整或无法解析的 JSON（常见于输出被截断），请重试。")
+        }
 
         let firstLine = trimmed
             .components(separatedBy: .newlines)
             .first?
             .trimmingCharacters(in: CharacterSet(charactersIn: "\"'` ").union(.whitespacesAndNewlines))
             ?? ""
+
+        guard !firstLine.isEmpty else {
+            throw GitCommandError(message: "AI 生成了空内容，请重试。")
+        }
 
         return firstLine
     }

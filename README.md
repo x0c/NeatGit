@@ -11,18 +11,18 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建，
 - 启动后自动扫描当前用户 Home 目录下的 Git 仓库。
 - 左侧按父目录分组浏览仓库，并自动生成尽量短且可区分的分组标题。
 - 选中仓库后读取 Git 状态，并展示 `changed`、`skip-worktree`、`ignored` 三类文件。
-- 支持文件多选、区块折叠、手动刷新和每个文件的勾选状态。
+- 支持原生文件多选、区块折叠和手动刷新；选择文件用于差异预览。
 - 对 untracked 文件提供追加 `.gitignore` 规则的入口，可按文件名忽略，也可按上级目录忽略。
 - 右侧已经接入单文件文本 diff 预览，支持在“未暂存 / 已暂存”之间切换。
-- 底部已经有 commit message 输入框、AI 按钮和提交菜单骨架。
+- 底部支持多行提交说明、AI 生成、提交并推送和仅提交到本地。
 
 ## 已实现能力
 
 ### 1. 原生 macOS 三栏工作区
 
 - 使用 SwiftUI `App` 生命周期启动。
-- 主窗口默认尺寸为 `1100 x 720`。
-- 主界面基于 `NavigationSplitView + HSplitView` 组织，保持 macOS 桌面应用的分栏语义。
+- 最低支持 macOS 26，主窗口默认尺寸为 `1200 x 780`。
+- 主界面采用系统三栏导航、原生工具栏和列表；支持系统侧栏开关、键盘选择和浅色/深色外观。
 - 左侧是仓库列表，中间是文件状态列表，右侧是 diff 预览，底部是提交栏。
 
 ### 2. 本地仓库自动扫描
@@ -60,7 +60,7 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建，
 
 ### 6. 单文件 diff 预览
 
-- 右侧预览基于 `WebKit + Monaco`。
+- 右侧预览通过 macOS 26 原生 `WebView / WebPage` 集成 Monaco，保留代码高亮与变更标记。这是目前唯一保留的网页内容界面。
 - 目前支持单个 changed 文件的左右对照文本 diff。
 - 会根据文件状态自动提供可用模式：
   - `未暂存`：`Index -> Working Tree`
@@ -68,18 +68,17 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建，
 - 对 untracked 文件可直接展示空内容到工作区文件的对照。
 - 已内置一批常见语言的 Monaco `language hint`，例如 Swift、TypeScript、JavaScript、JSON、Markdown、YAML、Shell、SQL 等。
 
-### 7. 提交栏骨架
+### 7. 提交栏
 
-- 底部已经有 commit message 输入框。
-- 已放置 AI 生成按钮。
-- 已放置“提交”主按钮和“提交（不推送远程分支）”菜单项。
-- 当前按钮启用逻辑已接好：未选择仓库或 message 为空时不可提交。
+- 使用系统多行文本编辑器填写提交说明，AI 生成与调试按钮独立排列，不遮挡文字。
+- 主按钮执行“提交并推送”，菜单可选“仅提交到本地”。
+- 提交范围为当前仓库符合条件的全部更改，自动排除 `.gitignore`、不提交文件和冲突文件；文件列表选择不改变提交范围。
+- 未选择仓库、说明为空、正在提交或正在 AI 生成时不可提交。
 
 ## 当前边界
 
 下面这些能力在代码里已经有明确边界，README 也同步按现状说明：
 
-- 真实 Git 提交、提交并推送、AI commit message 生成还没有接入。
 - 右侧 diff 目前只支持单文件预览，不支持多文件汇总视图。
 - 当前只支持文本 diff，不支持二进制文件预览。
 - 冲突文件的可视化 diff 还没有接入。
@@ -90,7 +89,7 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建，
 ## 技术栈
 
 - Swift 6.0
-- macOS 15.0+
+- macOS 26.0+ / Xcode 26+
 - SwiftUI
 - Observation
 - Swift Concurrency
@@ -110,7 +109,7 @@ NeatGitApp/
   Views/
     Sidebar/                      # 左侧仓库列表
     RepositoryStatus/             # 文件状态面板与预览容器
-    Diff/                         # Monaco diff 桥接
+    Diff/                         # macOS 26 WebKit + Monaco
     Commit/                       # 底部提交栏
   Resources/MonacoDiff/           # 打包后的 Monaco 前端资源
 Web/MonacoDiff/                   # Monaco diff 前端源码
@@ -121,11 +120,16 @@ project.yml                       # XcodeGen 配置源
 
 如果只是在 Xcode 中打开工程，建议优先把 `project.yml` 视为真实配置源；新增或重组源码后，应先重新生成工程。
 
-### 1. 生成工程
+### 1. 构建预览资源并生成工程
+
+首次构建或修改预览网页后：
 
 ```bash
+(cd Web/MonacoDiff && npm ci && npm run build)
 xcodegen generate
 ```
+
+前端构建直接写入应用资源目录；资源文件名变化后需重新生成工程。日常只改 Swift 时可以直接构建。
 
 ### 2. 命令行构建
 
@@ -133,6 +137,8 @@ xcodegen generate
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug -derivedDataPath .build-xcode build
 ```
+
+测试与完整本地安装流程见 [Operations 指南](docs/OPERATIONS_GUIDE.md)。
 
 构建产物位于：
 
@@ -143,8 +149,7 @@ xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug -deri
 ## 当前更适合继续推进的方向
 
 - 补齐仓库详情：分支、最近提交、远端信息、仓库摘要。
-- 把 commit 工作流从界面骨架接成真实 Git 能力。
-- 把勾选文件与 staged / checked 文件策略真正串起来。
+- 增强提交与推送流程的可靠性和回归验证。
 - 继续增强 diff 稳健性，例如冲突态、二进制态、目录态和多文件说明。
 - 完善 `.gitignore` / `skip-worktree` 的图形化管理。
 

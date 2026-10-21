@@ -3,12 +3,29 @@ import Foundation
 struct LLMChatMessage: Codable, Sendable {
     let role: String
     let content: String
+
+    init(role: String, content: String) {
+        self.role = role
+        self.content = content
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        role = try container.decode(String.self, forKey: .role)
+        // DeepSeek thinking 模式下 content 可能为 null（预算全被 reasoning 占满）
+        content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case role, content
+    }
 }
 
 struct LLMChatCompletionResult: Sendable {
     let content: String
     let model: String?
     let usage: LLMChatUsage?
+    let finishReason: String?
 }
 
 struct LLMChatUsage: Sendable {
@@ -28,23 +45,26 @@ final class LLMChatService: @unchecked Sendable {
         messages: [LLMChatMessage],
         configuration: LLMProviderConfiguration,
         temperature: Double = 0.1,
-        maxTokens: Int = 500,
-        responseFormat: LLMResponseFormat? = nil
+        maxTokens: Int = 1024,
+        responseFormat: LLMResponseFormat? = nil,
+        disableThinking: Bool = false
     ) async throws -> LLMChatCompletionResult {
         let endpoint = try makeEndpoint(from: configuration.baseURL)
+        let shouldDisableThinking = disableThinking || Self.shouldDisableThinking(for: configuration)
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 10
+        request.timeoutInterval = 30
         request.httpBody = try JSONEncoder().encode(
             OpenAIChatCompletionRequest(
                 model: configuration.model,
                 messages: messages,
                 temperature: temperature,
                 maxTokens: maxTokens,
-                responseFormat: responseFormat
+                responseFormat: responseFormat,
+                thinking: shouldDisableThinking ? .disabled : nil
             )
         )
 
@@ -63,7 +83,14 @@ final class LLMChatService: @unchecked Sendable {
         }
 
         let completion = try JSONDecoder().decode(OpenAIChatCompletionResponse.self, from: data)
-        guard let content = completion.choices.first?.message.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let choice = completion.choices.first
+        let content = choice?.message.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let finishReason = choice?.finishReason
+
+        guard !content.isEmpty else {
+            if finishReason == "length" {
+                throw GitCommandError(message: "AI 输出被截断（token 预算不足），请减少改动范围或提高 max_tokens 后重试。")
+            }
             throw GitCommandError(message: "AI 服务返回了空内容，可能是输入过长或模型不支持当前请求格式。")
         }
 
@@ -76,8 +103,16 @@ final class LLMChatService: @unchecked Sendable {
                     completionTokens: usage.completionTokens,
                     totalTokens: usage.totalTokens
                 )
-            }
+            },
+            finishReason: finishReason
         )
+    }
+
+    /// DeepSeek V4 默认开启 thinking，会与 max_tokens 抢预算导致 content 为空/截断。
+    private static func shouldDisableThinking(for configuration: LLMProviderConfiguration) -> Bool {
+        let host = configuration.baseURL.host?.lowercased() ?? ""
+        let model = configuration.model.lowercased()
+        return host.contains("deepseek") || model.contains("deepseek")
     }
 
     private func makeEndpoint(from baseURL: URL) throws -> URL {
@@ -106,12 +141,19 @@ private struct ResponseFormatWrapper: Encodable {
     let type: String
 }
 
+private struct ThinkingConfig: Encodable, Sendable {
+    let type: String
+
+    static let disabled = ThinkingConfig(type: "disabled")
+}
+
 private struct OpenAIChatCompletionRequest: Encodable, Sendable {
     let model: String
     let messages: [LLMChatMessage]
     let temperature: Double
     let maxTokens: Int
     let responseFormat: LLMResponseFormat?
+    let thinking: ThinkingConfig?
 
     private enum CodingKeys: String, CodingKey {
         case model
@@ -119,6 +161,7 @@ private struct OpenAIChatCompletionRequest: Encodable, Sendable {
         case temperature
         case maxTokens = "max_tokens"
         case responseFormat = "response_format"
+        case thinking
     }
 
     func encode(to encoder: Encoder) throws {
@@ -131,6 +174,10 @@ private struct OpenAIChatCompletionRequest: Encodable, Sendable {
         if let responseFormat {
             try container.encode(ResponseFormatWrapper(type: responseFormat.typeValue), forKey: .responseFormat)
         }
+
+        if let thinking {
+            try container.encode(thinking, forKey: .thinking)
+        }
     }
 }
 
@@ -141,6 +188,12 @@ private struct OpenAIChatCompletionResponse: Decodable, Sendable {
 
     struct Choice: Decodable, Sendable {
         let message: LLMChatMessage
+        let finishReason: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case message
+            case finishReason = "finish_reason"
+        }
     }
 
     struct Usage: Decodable, Sendable {

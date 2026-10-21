@@ -13,6 +13,8 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
 - 优先覆盖高频操作：项目发现、变更查看、提交、推送。
 - 在合适场景引入 AI，减少重复输入和机械操作。
 
+本仓库已作为个人开源项目发布到 GitHub（[x0c/NeatGit](https://github.com/x0c/NeatGit)），对信息卫生有硬性要求，见第 6 节。
+
 ## 2. 产品与设计原则
 
 所有改动都必须尽量贴合下面这些原则：
@@ -28,13 +30,11 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
 
 在动手前，先把下面这些“当前默认前提”当成事实：
 
-- 最低部署版本当前是 `macOS 15.0`。
+- 最低部署版本为 `macOS 26.0`，使用 Xcode 26 SDK；不保留旧系统 UI 兼容分支。
 - Swift 语言版本当前是 `Swift 6.0`。
 - UI 主体仍然以 `SwiftUI` 为主，应用入口使用 `SwiftUI App` 生命周期。
-- 主窗口骨架基于 `NavigationSplitView + HSplitView`，保持典型 macOS 桌面分栏语义。
-- 状态管理已经开始迁移到 Observation：
-  - `RepositoryStore`、`RepositoryStatusStore` 使用 `@MainActor + @Observable`。
-  - 在 `View` 中持有这类 store 时，优先使用 `@State`，不要继 续默认写成 `@StateObject`。
+- 主窗口使用三栏 `NavigationSplitView`、系统工具栏和 `safeAreaBar`；列表选择/折叠由 `List` / `DisclosureGroup` 接管。不要遍历系统窗口内部视图改样式，或另做系统已有控件的选择/键盘逻辑。
+- 所有 store 使用 `@MainActor + @Observable`，视图持有用 `@State`，需要绑定用 `@Bindable`。
 - 后台任务优先使用 Swift Concurrency：
   - 新代码优先考虑 `Task`、`Task.detached`、`async/await`。
   - 不要在新增逻辑里继续优先写 `DispatchQueue.global().async` 风格，除非有明确理由。
@@ -42,7 +42,7 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
   - `project.yml` 是工程配置源。
   - `NeatGit.xcodeproj` 是生成产物，不是唯一事实来源。
   - 只要新增、删除或重组源码/资源文件，优先修改 `project.yml` 后执行 `xcodegen generate`，不要只手改 `xcodeproj`。
-- 当前仓库已经接入 `WebKit + Monaco` 用于右侧文本 diff 预览，后续做 diff 能力时应优先沿现有模型扩展，而不是另起一套完全不 同的预览栈。
+- 右侧 diff 使用 macOS 26 的 `WebView` / `WebPage` 承载 Monaco，保留现有专业差异能力。其余界面尽量系统原生；具体边界见 [核心知识库](docs/NEATGIT_KNOWLEDGE_BASE.md#界面与系统版本约定)。
 
 ### 3.1 对后续开发有价值的额外信息
 
@@ -67,13 +67,12 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
 - 已实现仓库分组：左侧列表按父目录分组，分组标题会自动压缩为 尽量短且可区分的路径名。
 - 已实现基础选择态：支持展开/折叠分组、选择仓库、同步当前展开组。
 - 已实现文件状态读取：中间面板已经接入当前仓库的 `changed / skip-worktree / ignored` 文件列表。
-- 已实现文件列表交互：支持分组折叠、文件选择、多选态同步、勾 选框和手动刷新。
+- 已实现文件列表交互：原生分组折叠、键盘导航、多选和手动刷新；行选择只控制预览，不改变自动提交范围。
 - 已实现 `.gitignore` 追加入口：对 untracked 文件可直接忽略文件名或上级目录，并在写入失败时展示错误。
 - 已实现右侧 diff 预览第一版：单文件文本 diff 已经接入，支持 在“未暂存 / 已暂存”之间切换。
 - 当前 diff 仍有明确边界：只支持单文件、文本内容、约 750 KB  以内文件；冲突文件、二进制文件和多文件汇总仍未完成。
 - 已实现 Monaco Web 预览链路：右侧 diff 依赖 `NeatGitApp/Resources/MonacoDiff/` 下的静态资源和 `MonacoDiffView.swift` 的 JS 注入协议。
-- 已实现底部提交栏骨架：已有 commit message 输入框、AI 按钮、提交按钮和“提交但不推送”菜单项。
-- 尚未实现真实 Git 提交流程：当前 AI 生成、提交、提交并推送仍为空实现。
+- 已实现底部提交栏：原生多行输入框、AI 生成、提交并推送和“仅提交到本地”；真实调用链以 [AI Commit 指南](docs/AI_COMMIT_GUIDE.md) 为准。
 
 ## 5. 代码结构认知
 
@@ -83,13 +82,13 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
 - `NeatGitApp/ContentView.swift`：主界面编排、跨面板选择态和 提交栏入口。
 - `NeatGitApp/Domain/`：Git 仓库、文件状态、diff 模式、分组等领域模型。
 - `NeatGitApp/Services/`：Git 命令调用、仓库扫描、状态读取、diff 读取、`.gitignore` 写入等服务。
-- `NeatGitApp/Stores/`：界面状态容器；当前是混合结构：
-  - `RepositoryStore`、`RepositoryStatusStore` 已迁到 Observation。
-  - `RepositoryDiffStore` 仍是 `ObservableObject`，因为它当前由右侧预览面板通过 `@StateObject` 持有。
+- `NeatGitApp/Stores/`：Observation 界面状态容器，差异缓存和切换也由 `RepositoryDiffStore` 管理。
 - `NeatGitApp/Views/Sidebar/`：左侧仓库列表与 sidebar 控件。
 - `NeatGitApp/Views/RepositoryStatus/`：文件状态列表、右侧预 览面板、占位态视图。
 - `NeatGitApp/Views/Diff/`：Monaco diff 相关视图。
 - `NeatGitApp/Views/Commit/`：底部提交栏。
+- `NeatGitApp/Views/Design/`：设计系统与文件状态样式。
+- `NeatGitTests/` / `NeatGitUITests/`：单元测试与桌面 UI 回归，运行命令与验证边界见 [Operations 指南](docs/OPERATIONS_GUIDE.md)。
 - `project.yml`：XcodeGen 配置源。
 - `NeatGit.xcodeproj`：由 `project.yml` 生成的工程文件。
 
@@ -115,6 +114,7 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
 - 如果扩展 diff 能力，优先沿 `RepositoryDiffMode / RepositoryDiffDocument / RepositoryDiffStore / MonacoDiffView` 这一条链路演进。
 - 如果修改右侧 diff 预览刷新机制，优先保持“仓库切换 + 文件切 换 + mode 切换”三条状态链路可单独验证，避免一次把 View、Store、WebKit 注入协议同时重写。
 - 除非需求明确要求，否则不要加入与项目愿景无关的能力。
+- 本仓库对外开源：不要在代码、文档、提交里写入真实姓名、工号、企业邮箱、公司信息或本机绝对路径（用 `~/...` 或相对路径）；对外标识（bundle id、日志 subsystem、队列 label）统一用 `io.github.x0c.*` 前缀；git 提交身份固定为 `x0c <x0c@users.noreply.github.com>`（仓库 local config 已设置），不要改回公司身份。
 
 ## 7. 当前阶段建议
 
@@ -122,7 +122,7 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
 
 - 仓库详情补完，例如分支、最近提交、远端信息、仓库级摘要。
 - 扫描结果的可解释性和刷新体验。
-- commit 工作流从占位按钮变成真实能力，包括 staged/checked 文件和真实提交链路。
+- 提交工作流的可靠性与真实用户路径回归。
 - `.gitignore` / `skip-worktree` 图形化管理。
 - diff 预览的稳健性增强，例如二进制态提示、冲突态提示、目录/ 多文件说明和性能边界处理。
 
@@ -254,15 +254,15 @@ pgrep -fal '/Applications/NeatGit.app/Contents/MacOS/NeatGit'
 
 ## 文档导航
 
-- [`docs/NEATGIT_KNOWLEDGE_BASE.md`](docs/NEATGIT_KNOWLEDGE_BASE.md)：修改任意 Swift 模块、扩展功能（仓库扫描/文件状态/Diff/提交流程/Monaco 集成/LLM 配置）、评审 PR、分析性能问题、排查运行时 crash 前必读。
-- [`docs/AI_COMMIT_GUIDE.md`](docs/AI_COMMIT_GUIDE.md)：修改或扩展 AI commit message 生成逻辑、接入真实提交/推送流程、调试 LLM 调用失败、评审提交相关代码前必读。
+- [`docs/NEATGIT_KNOWLEDGE_BASE.md`](docs/NEATGIT_KNOWLEDGE_BASE.md)：修改 Swift 模块、UI/API 与系统版本升级、扩展仓库/文件/Diff/提交/LLM 功能、评审或排障前必读；遵循原生界面边界、单文件协议和缓存规则。
+- [`docs/AI_COMMIT_GUIDE.md`](docs/AI_COMMIT_GUIDE.md)：修改、扩展、重构或简化 AI commit message 生成逻辑（含调用链、prompt 构建、评分策略）、接入真实提交/推送流程、调试 LLM 调用失败、评审提交相关代码前必读。
 - [`docs/LLM_COMMIT_MESSAGE_RESEARCH.md`](docs/LLM_COMMIT_MESSAGE_RESEARCH.md)：改进 AI commit prompt 设计、评审 commit 生成策略、调研行业方案、决定是否引入多步流水线或 map-reduce 架构前必读。
 - [`docs/GITIGNORE_KNOWLEDGE_BASE.md`](docs/GITIGNORE_KNOWLEDGE_BASE.md)：修改或扩展 .gitignore 写入逻辑、忽略规则生成、右键忽略菜单交互、排查忽略操作失败前必读。
 - [`docs/OPERATIONS_GUIDE.md`](docs/OPERATIONS_GUIDE.md)：首次接手项目、本地构建遇到阻碍、验证代码变更、排查 Monaco 空白/扫描卡死/AI 调用失败等运行时问题时必读。
 
 ---
 
-## 文档待补充（backlog）
+## 待补充知识库（doc-init backlog）
 
 当前无待补充领域。后续新增领域由 doc-update 登记。
 
@@ -270,7 +270,7 @@ pgrep -fal '/Applications/NeatGit.app/Contents/MacOS/NeatGit'
 
 ## 领域地图（doc-init）
 
-<!-- 覆盖度复核基线：2026-06-24 · 源码指纹 扫描 29 Swift 文件 / JavaScript 184 · C/C++ 4 / 1 子模块 · 基线提交 2f13854 -->
+<!-- 覆盖度复核基线：2026-10-21 · 源码指纹 扫描 160 文件 / JavaScript 93 · Swift 43 / 1 子模块 · 基线提交 66ff49a -->
 
 | 领域 | 入口锚点 |
 |------|---------|

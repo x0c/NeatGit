@@ -9,7 +9,7 @@
 | 项目 | 要求 |
 |------|------|
 | macOS | 26.0+ |
-| Xcode | 26+（验证工具链：Xcode 26.3，`/Applications/Xcode.app`） |
+| Xcode | 26+; select a complete installed Xcode and record `xcodebuild -version` |
 | Swift | 6.0 |
 | XcodeGen | 需安装（`brew install xcodegen`） |
 | Node.js | 首次构建或修改 Monaco 前端时需要 |
@@ -35,7 +35,6 @@ open NeatGit.xcodeproj
 
 命令行构建：
 ```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug -derivedDataPath .build-xcode build
 ```
 
@@ -87,12 +86,10 @@ xcodegen generate # hash 文件名变化后更新 Xcode 资源引用
 先完成 §三网页构建和工程生成，然后运行：
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug \
   -derivedDataPath .build-xcode -destination 'platform=macOS' \
   -only-testing:NeatGitTests test
 
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug \
   -derivedDataPath .build-xcode -destination 'platform=macOS' \
   -only-testing:NeatGitUITests -parallel-testing-enabled NO test
@@ -107,7 +104,7 @@ xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug \
 
 验证基线：macOS 26.7 / Xcode 26.3 下，12 项组件、差异状态与真实 WebView 测试通过；浅深色组件截图和 Chrome 差异显示、只读交互均已核验。完整桌面 XCUITest 因系统认证阻止初始化，未完成窗口点击与快捷键端到端验收，不能将其计入通过项。
 
-构建成功后按根 `AGENTS.md` §8 安装并启动 `/Applications/NeatGit.app`，核验进程路径和 PID。构建失败时不替换安装包。
+After successful verification and a committed source snapshot, follow root `AGENTS.md` §8 and `RELEASING.md` for signed installation and launch of `/Applications/NeatGit.app`，核验进程路径和 PID。构建失败时不替换安装包。
 
 ---
 
@@ -146,3 +143,15 @@ scripts/publish-release.sh                # 后台完整发布（公证排队几
 | XCUITest 初始化报 `System authentication is running` | 系统认证/锁屏阻止桌面自动化；不能通过加延时或换坐标解决，需要解锁并允许系统测试授权 |
 
 <!-- 该文档整理/压缩于 2026-10-21 -->
+
+## Settings rollout diagnostics (2026-10-22)
+
+Fresh Debug build and analysis completed on Xcode 27.2 / macOS 27.2 SDK. The first complete unit/component run executed 30 tests: 29 passed; Monaco's visible folded-line assertion timed out while the session was locked and its display slept. Bridge/state, secure-input and native-control tests passed. This is not a desktop-interaction pass. Retry the unchanged drawing assertion once with a bounded awake display; retain its outcome separately.
+
+Two actionable test concurrency diagnostics came from mutable captures written by `Thread.detachNewThread`. Replace them with a `Synchronization.Mutex<Result<...>?>` handoff, retaining the timeout and object-count assertions. The installed SDK supplies Mutex (macOS 15+, below this app's macOS 26 target); [Apple Mutex](https://developer.apple.com/documentation/synchronization/mutex) documents exclusive state access. No unchecked conformance or warning suppression is warranted.
+
+The AppIntents metadata warning originates in Xcode's automatic extraction for targets with no AppIntents dependency. NeatGit has no intents; retain this notice without adding a dummy dependency. Residual risk: none for Settings; revisit if intents are introduced.
+
+The runtime's missing `folder.badge.arrow.up` image belongs to the Rescan Projects toolbar action. Keep the inspected native Rescan Projects `Button` in `ContentView` and change only its image to `arrow.clockwise` (verified with `NSImage(systemSymbolName:)` in the installed SDK/runtime); preserve scanning behavior. WebKit's sandbox/pasteboard, unavailable launch-services/AudioComponentRegistrar and process-suspension messages are platform-process diagnostics in the test host; do not add private entitlements or weaken its sandbox. Their visible-rendering limitation remains explicit above.
+
+The bounded-awake retry still passed 29/30 tests and timed out on the unchanged Monaco visible-lines assertion; lock remained true. The two Swift concurrency warnings disappeared after the Mutex fix. The new prompt regression first assumed SwiftUI buttons were `NSButton` descendants, then tried public `NSAccessibilityProtocol`; neither exposed the button under the lock shield. Those in-process probing assumptions were removed. The actual Cancel/Done regression now lives in `NativeWorkspaceTests`, using XCUITest identifiers and preserving the saved prompt. Desktop execution remains unavailable under system authentication; do not count it as passed. Component secure-input/light/dark rendering continues to pass. Current Settings-window visual acceptance is recorded independently after installation.

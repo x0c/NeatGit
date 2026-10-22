@@ -1,34 +1,35 @@
+import AppKit
 import SwiftUI
 
 struct LLMSettingsView: View {
     @Bindable var settingsStore: LLMSettingsStore
     @State private var updater = AppUpdater.shared
+    @State private var contentHeight: CGFloat?
+    @State private var isEditingPrompt = false
 
     var body: some View {
         Form {
             Section("服务连接") {
                 TextField("服务地址", text: $settingsStore.baseURL)
                     .autocorrectionDisabled()
+                    .help("填写兼容 OpenAI 的接口前缀，例如 https://api.deepseek.com 或 https://api.openai.com/v1。")
                     .accessibilityIdentifier("llm-base-url")
 
                 TextField("模型", text: $settingsStore.model)
                     .autocorrectionDisabled()
+                    .help("AI 提交始终使用此模型，不会自动切换。")
                     .accessibilityIdentifier("llm-model")
 
                 SecureField("API 密钥", text: $settingsStore.apiKey)
                     .accessibilityIdentifier("llm-api-key")
 
-                Text("Base URL 填接口前缀即可，例如 DeepSeek 用 https://api.deepseek.com，OpenAI 可用 https://api.openai.com/v1。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("这里全局只配置一个模型，AI 提交不会自动切换模型；建议优先填写响应更快的轻量聊天模型。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("API Key 会保存在当前 macOS 用户的本地设置中，不再读取 Keychain。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                LabeledContent("生成说明") {
+                    Button("编辑…") {
+                        isEditingPrompt = true
+                    }
+                    .accessibilityIdentifier("llm-edit-prompt")
+                }
+                .help("发送给 AI 的系统提示词，可在调试窗口查看最终内容。")
             }
 
             Section("更新") {
@@ -49,66 +50,91 @@ struct LLMSettingsView: View {
                     )
                 )
                 .disabled(!updater.canCheckForUpdates || !updater.allowsAutomaticUpdates)
-
-                HStack {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(verbatim: "NeatGit").fontWeight(.medium)
-                        Text(
-                            verbatim: Bundle.main.object(
-                                forInfoDictionaryKey: "CFBundleShortVersionString"
-                            ) as? String ?? ""
-                        )
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 12)
-                    Button("检查更新…") {
-                        updater.checkForUpdates()
-                    }
-                    .disabled(!updater.canCheckForUpdates)
-                }
             }
 
-            Section("生成说明") {
-                TextEditor(text: $settingsStore.systemPrompt)
-                    .textEditorStyle(.automatic)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(minHeight: 220)
-                    .accessibilityLabel("系统提示词")
-                    .accessibilityIdentifier("llm-system-prompt")
-
-                Button("恢复默认") {
-                    settingsStore.resetSystemPrompt()
+            Section {
+                HStack(spacing: 10) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 32, height: 32)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: "NeatGit").fontWeight(.medium)
+                        Text(verbatim: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    Spacer(minLength: 12)
+                    Button("检查更新…") { updater.checkForUpdates() }
+                        .disabled(!updater.canCheckForUpdates)
+                    Button("退出") { NSApp.terminate(nil) }
+                        .accessibilityLabel("退出 NeatGit")
                 }
-                .disabled(
-                    settingsStore.systemPrompt == settingsStore.defaultSystemPrompt
-                )
-
-                Text("System Prompt 会直接作为 AI 提交的系统提示词发送，可在调试窗口查看最终发出的内容。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 520, idealWidth: 600, maxWidth: 720, minHeight: 500, idealHeight: 600)
+        .toggleStyle(.switch)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentSize.height
+        } action: { _, height in
+            if height.isFinite, height > 0 {
+                contentHeight = ceil(height)
+            }
+        }
+        .scrollDisabled(true)
+        .frame(width: 480, height: contentHeight)
+        .fixedSize(horizontal: false, vertical: true)
+        .onExitCommand { NSApp.keyWindow?.performClose(nil) }
+        .sheet(isPresented: $isEditingPrompt) {
+            SystemPromptEditor(settingsStore: settingsStore)
+        }
         .alert(
             "保存失败",
             isPresented: Binding(
                 get: { settingsStore.latestPersistenceError != nil },
-                set: { shouldPresent in
-                    if !shouldPresent {
-                        settingsStore.clearPersistenceError()
-                    }
-                }
+                set: { if !$0 { settingsStore.clearPersistenceError() } }
             ),
             actions: {
-                Button("知道了", role: .cancel) {
-                    settingsStore.clearPersistenceError()
-                }
+                Button("知道了", role: .cancel) { settingsStore.clearPersistenceError() }
             },
-            message: {
-                Text(settingsStore.latestPersistenceError ?? "")
-            }
+            message: { Text(settingsStore.latestPersistenceError ?? "") }
         )
+    }
+}
+
+private struct SystemPromptEditor: View {
+    let settingsStore: LLMSettingsStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: String
+
+    init(settingsStore: LLMSettingsStore) {
+        self.settingsStore = settingsStore
+        _draft = State(initialValue: settingsStore.systemPrompt)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("生成说明").font(.headline)
+            TextEditor(text: $draft)
+                .font(.system(.body, design: .monospaced))
+                .textEditorStyle(.automatic)
+                .accessibilityLabel("系统提示词")
+                .accessibilityIdentifier("llm-system-prompt")
+            HStack {
+                Button("恢复默认") { draft = settingsStore.defaultSystemPrompt }
+                    .disabled(draft == settingsStore.defaultSystemPrompt)
+                Spacer()
+                Button("取消", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("完成") {
+                    settingsStore.systemPrompt = draft
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 560, height: 380)
     }
 }

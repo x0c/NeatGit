@@ -54,6 +54,23 @@ final class NativeWorkspaceTests: XCTestCase {
         app.typeKey(",", modifierFlags: .command)
         XCTAssertTrue(app.textFields["llm-base-url"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.secureTextFields["llm-api-key"].exists)
+        app.buttons["llm-edit-prompt"].click()
+        let promptEditor = app.textViews["llm-system-prompt"].firstMatch
+        XCTAssertTrue(promptEditor.waitForExistence(timeout: 5))
+        let savedPrompt = try XCTUnwrap(promptEditor.value as? String)
+        promptEditor.click()
+        app.typeKey("a", modifierFlags: .command)
+        promptEditor.typeText("Cancelled test draft")
+        app.buttons["取消"].click()
+        app.buttons["llm-edit-prompt"].click()
+        XCTAssertTrue(promptEditor.waitForExistence(timeout: 5))
+        XCTAssertEqual(promptEditor.value as? String, savedPrompt)
+        app.buttons["完成"].click()
+        app.buttons["llm-edit-prompt"].click()
+        XCTAssertTrue(promptEditor.waitForExistence(timeout: 5))
+        XCTAssertEqual(promptEditor.value as? String, savedPrompt)
+        app.buttons["取消"].click()
+
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "macOS 26 原生设置窗口"
         attachment.lifetime = .keepAlways

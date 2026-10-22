@@ -116,7 +116,7 @@ struct ContentView: View {
 
         ToolbarItem(placement: .primaryAction) {
             Menu("项目操作", systemImage: "ellipsis.circle") {
-                Button("重新扫描项目", systemImage: "folder.badge.arrow.up") {
+                Button("重新扫描项目", systemImage: "arrow.clockwise") {
                     repositoryStore.refresh()
                 }
                 .disabled(repositoryStore.isScanning || commitStore.isBusy)

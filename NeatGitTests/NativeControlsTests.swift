@@ -94,7 +94,7 @@ final class NativeControlsTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let settings = LLMSettingsStore(defaults: defaults)
         for (scheme, name) in [(ColorScheme.light, "浅色"), (.dark, "深色")] {
-            let window = host(LLMSettingsView(settingsStore: settings).environment(\.colorScheme, scheme), size: NSSize(width: 600, height: 720))
+            let window = host(LLMSettingsView(settingsStore: settings).environment(\.colorScheme, scheme), size: NSSize(width: 480, height: 450))
             window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
             try await settle()
             let root = try XCTUnwrap(window.contentView)

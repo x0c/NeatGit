@@ -4,6 +4,16 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建，
 
 它不是一个追求“所有 Git 子命令都能点出来”的重型客户端，而是围绕本地项目发现、文件变更查看、提交准备和后续 AI 辅助这些高频流程来设计。
 
+[简体中文](README.zh-CN.md) · [下载安装包](https://github.com/x0c/NeatGit/releases/latest)
+
+首次安装（macOS 26+，Apple silicon / Intel）：
+
+```bash
+curl -fL https://github.com/x0c/NeatGit/releases/download/v0.1.1/NeatGit-0.1.1.dmg -o /tmp/NeatGit.dmg && open /tmp/NeatGit.dmg
+```
+
+将 NeatGit.app 拖入 Applications 后打开应用；按 ⌘, 配置 AI 服务。Git 浏览不需要 AI 配置。
+
 ## 当前进度
 
 项目已经不再是只有壳层的想法验证版，目前可以跑通一条比较完整的本地浏览链路：
@@ -79,7 +89,7 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建，
 
 - 通过 Sparkle 2 实现应用内自动更新：自动检查、后台下载安装。
 - 更新清单带 EdDSA 签名，解包前验签；后台发现更新不抢焦点，只有主动“检查更新…”才弹窗。
-- 入口：应用菜单 `NeatGit → 检查更新…`，或设置页“更新”分组（含自动开关与当前版本号）。
+- 入口：应用菜单 `NeatGit → 检查更新…`，或设置页底部的关于行；自动开关位于“更新”分组。
 - 他人机器首次安装走 GitHub Releases 的 DMG（Developer ID 签名 + 苹果公证 + 装订票据）。
 
 ## 当前边界
@@ -144,7 +154,6 @@ xcodegen generate
 ### 2. 命令行构建
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug -derivedDataPath .build-xcode build
 ```
 

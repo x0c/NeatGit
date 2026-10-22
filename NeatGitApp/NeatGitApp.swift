@@ -28,7 +28,7 @@ struct NeatGitApp: App {
         Settings {
             LLMSettingsView(settingsStore: llmSettingsStore)
         }
-        .defaultSize(width: 600, height: 640)
+        .defaultSize(width: 480, height: 450)
         .windowResizability(.contentSize)
     }
 }

@@ -141,11 +141,7 @@ outside the R4 draft flow.
 
 ## Coordinator handoff
 
-```bash
-pkill -x NeatGit || true
-ditto "build/release/export/NeatGit.app" "/Applications/NeatGit.app"  # after pkill + rm old .app
-open "/Applications/NeatGit.app"                                          # retry twice before reporting failure
-```
+Install only after the source snapshot is committed and the signed export validates. Identify the exact installed process, request native Quit, and verify its exit. Stage a fresh `ditto` copy beside the destination and atomically exchange the complete app bundles; never merge bundles or remove the live app before staging succeeds. Launch `/Applications/NeatGit.app`, verify its version/executable identity, then inspect the changed surface. Preserve preferences and repository state. Follow root `AGENTS.md` §8 for acceptance and failure reporting.
 
 ## References
 

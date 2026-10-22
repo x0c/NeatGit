@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import XCTest
 @testable import NeatGit
 
@@ -18,24 +19,19 @@ final class GitCommandRunnerTests: XCTestCase {
         let specifiers = Array(repeating: fixture.blobSpecifier, count: 20_000)
 
         let expectation = expectation(description: "大批量 Git 对象读取应在限定时间内完成")
-        var objects: [Data?] = []
-        var failure: Error?
+        let result = Mutex<Result<[Data?], any Error>?>(nil)
 
-        // 放到后台线程并设超时：死锁时主线程不会被拖住，用例以超时失败收场。
+        // Keep the timeout independent of the pipe worker; synchronize its result handoff.
         Thread.detachNewThread {
-            do {
-                objects = try GitCommandRunner.readObjects(specifiers: specifiers, in: fixture.directory.path)
-            } catch {
-                failure = error
+            let outcome = Result {
+                try GitCommandRunner.readObjects(specifiers: specifiers, in: fixture.directory.path)
             }
+            result.withLock { $0 = outcome }
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 60)
-
-        if let failure {
-            throw failure
-        }
+        let objects = try XCTUnwrap(result.withLock { $0 }).get()
 
         XCTAssertEqual(objects.count, specifiers.count, "每个请求都应有对应结果。")
         XCTAssertEqual(objects.compactMap { $0 }.count, specifiers.count, "命中的对象内容不应丢失。")

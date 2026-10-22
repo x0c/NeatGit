@@ -11,6 +11,7 @@ NeatGit 是面向 macOS 的原生 Git 客户端（SwiftUI 构建）。核心循�
 ## 目录索引
 
 - 界面与系统版本约定
+- Compact Settings (layout, prompt editing and verification)
 - 一、目录结构与领域划分
 - 二、核心业务规则与隐性约束
   - 2.1 Git 命令执行基础设施（GitCommandRunner）
@@ -39,6 +40,18 @@ NeatGit 是面向 macOS 的原生 Git 客户端（SwiftUI 构建）。核心循�
 - Git、AI 和本地配置的业务语义不因 UI API 升级而改变。
 
 依据：[Apple 新设计迁移指南](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass)、[WWDC25 SwiftUI 新设计](https://developer.apple.com/videos/play/wwdc2025/323/)、[WWDC25 WebKit for SwiftUI](https://developer.apple.com/videos/play/wwdc2025/231/)。接口可用性以本机 Xcode 26 SDK 声明和实际构建为准。
+
+## Compact Settings (owner rollout, 2026-10-22)
+
+The fleet inventory previously omitted NeatGit. Apply the [shared settings specification](~/Codes/_standards/workspace-docs/swift-docs/macos-settings-visual-spec.md) to its existing native Settings scene.
+
+- One 480-point, content-sized grouped `Form`: connection fields, a system-prompt edit action, automatic-update switches, then the 32-point app identity/version with Check for Updates and Quit. All settings and actions must remain visible without scrolling or scrollbars. Keep the native close control and Command-comma entry.
+- Reuse the actual NeatWebApp `GeneralSettingsPane`/`AboutRow` and measured-form pattern after inspection; do not copy its launcher, login-item or termination-guard behavior. NeatGit has ordinary application termination.
+- Use public SwiftUI `Settings`, `Form`, `Section`, `TextField`, `SecureField`, `LabeledContent`, `Toggle`, `sheet` and `TextEditor` directly. The installed macOS 27.2 SDK declares these APIs and `onScrollGeometryChange`/`scrollDisabled`; the deployment target remains macOS 26. Apple references: [Form](https://developer.apple.com/documentation/swiftui/form), [TextEditor](https://developer.apple.com/documentation/swiftui/texteditor), [scrollDisabled](https://developer.apple.com/documentation/swiftui/view/scrolldisabled(_:)).
+- The prompt is arbitrary user content, not additional settings rows. Edit it in a native sheet with a multiline editor and Cancel/Done; cancellation discards the draft, Done persists through the existing store, and Restore Default updates only the draft. The main Settings surface must never grow or scroll with prompt length. The editor retains native text navigation, selection and undo; its content can scroll inside the editor.
+- Remove tutorial paragraphs from the form; retain useful connection/prompt explanations as hover help. Do not perform AI requests, Git commits/pushes or modify the user's repository selection during acceptance.
+- This visual change preserves `LLMSettingsStore` persistence. Its existing explicit no-Keychain product decision in `AI_COMMIT_GUIDE.md` conflicts with the newer shared Keychain default. Credential migration is outside this visual change; it remains an unresolved storage decision, not a claim of secure-at-rest credential storage. Never print credentials or preferences wholesale.
+- Validate current installed Settings pixels, full geometry, native secure input and prompt Cancel/Done behavior separately. Lock-screen restrictions on physical keyboard/VoiceOver do not prevent attempted window capture and do not establish those interaction passes.
 
 ## 一、目录结构与领域划分
 

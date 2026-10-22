@@ -46,7 +46,7 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
 
 ### 3.1 对后续开发有价值的额外信息
 
-- 当前本机验证环境已经可用完整 Xcode 构建，且最近一次验证通过的是 `/Applications/Xcode.app/Contents/Developer`。
+- 当前本机验证环境已经可用完整 Xcode 构建，且当前工具链应通过 `xcode-select -p` 和 `xcodebuild -version` 确认。
 - Swift 6 会比以前更严格地检查并发隔离与 sendability；如果改 动 store、`Binding`、异步任务捕获，优先按 actor 边界思考，而 不是等编译器报错后再补。
 - 当前已把通用 Git 进程执行统一收口到 `NeatGitApp/Services/GitCommandSupport.swift`：
   - 需要执行 Git 子命令时，优先复用 `GitCommandRunner` 与 `GitCommandError.describe(_:)`。
@@ -141,105 +141,15 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
 - “代码文件”指会影响应用行为的文件，例如 `swift`、工程配置、 资源等。
 - 如果只修改文档文件（例如 `README.md`、`AGENTS.md`），不要求执行这套流程。
 
-### 8.1 Xcode 环境检查
+### 8.1 Build, release and installation
 
-先确认完整 Xcode 是否存在：
+Use the active complete Xcode selected by `xcode-select -p`; validate it with `xcodebuild -version`. If only Command Line Tools are selected, locate an installed full Xcode and set `DEVELOPER_DIR` for this task. No particular historical application path is required.
 
-```bash
-ls -d /Applications/Xcode.app
-```
+Follow [Operations](docs/OPERATIONS_GUIDE.md) for full Debug build, analysis and tests. Follow [RELEASING.md](RELEASING.md) for the signed universal Release archive/export and publication. Build failures stop installation. Commit the complete source snapshot before replacing the installed app; install its Developer ID-signed export, not a Debug build.
 
-然后优先检查当前终端实际会使用的开发者目录：
+Before replacement, identify the running application by its bundle/executable path, request native Quit and verify that exact process has exited. Preserve user preferences and repository state. Replace `/Applications/NeatGit.app` atomically using a staged `ditto` copy of the verified export, then launch that installed path. Do not broadly kill matching processes, delete the installed app before a replacement is ready, or merge a new bundle into an old bundle.
 
-```bash
-echo "${DEVELOPER_DIR:-<empty>}"
-xcode-select -p
-```
-
-说明：
-
-- 如果 `DEVELOPER_DIR` 已经是 `/Applications/Xcode.app/Contents/Developer`，直接继续。
-- 如果 `xcode-select -p` 指向 `/Library/Developer/CommandLineTools`，不要立刻判定为阻塞；本项目允许显式指定 `DEVELOPER_DIR` 来构建。
-- 只有当 `/Applications/Xcode.app` 不存在，或者显式指定 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` 后 `xcodebuild` 仍不可用，才算真正阻塞。
-
-可用性验证命令：
-
-```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -version
-```
-
-如果这条命令失败，必须明确报告阻塞原因：当前环境无法构建 macOS App，不能假装已经验证成功。
-
-### 8.2 固定构建命令
-
-在仓库根目录执行，必须显式指定完整 Xcode：
-
-```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug -derivedDataPath .build-xcode build
-```
-
-要求：
-
-- 构建失败时，停止后续启动流程。
-- 构建失败时，要输出失败结论，并说明没有启动新版本应用。
-- 不要在构建失败后继续保留“可预览”的错误表述。
-- 构建产物固定使用 `.build-xcode/Build/Products/Debug/NeatGit.app`，不要换成临时路径。
-
-### 8.3 固定重启流程
-
-构建成功后，必须先关闭旧进程，再将应用移动/替换到 `/Applications` 里面，最后启动 `/Applications` 里面的新 app：
-
-```bash
-pkill -x NeatGit || true
-rm -rf /Applications/NeatGit.app
-cp -R ~/Swift/NeatGit/.build-xcode/Build/Products/Debug/NeatGit.app /Applications/
-open /Applications/NeatGit.app
-```
-
-启动后必须补一条检查，确认新进程真的起来了：
-
-```bash
-pgrep -fal '/Applications/NeatGit.app/Contents/MacOS/NeatGit'
-```
-
-要求：
-
-- 先停旧进程，再开新进程。
-- 必须先把编译好的 app 移动/替换到 `/Applications` 里面。
-- 必须启动 `/Applications/NeatGit.app`，不要启动其他路径下的历史包。
-- 如果 `open` 成功但进程没有起来，必须继续排查，不能直接声称“已经启动”。
-
-### 8.4 推荐的一次性完整命令顺序
-
-在仓库根目录推荐按下面顺序执行：
-
-```bash
-pkill -x NeatGit || true
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug -derivedDataPath .build-xcode build
-rm -rf /Applications/NeatGit.app
-cp -R ~/Swift/NeatGit/.build-xcode/Build/Products/Debug/NeatGit.app /Applications/
-open /Applications/NeatGit.app
-pgrep -fal '/Applications/NeatGit.app/Contents/MacOS/NeatGit'
-```
-
-执行语义：
-
-- 第 1 步确保旧预览进程被清理。
-- 第 2 步只要失败，就不能执行后续步骤。
-- 第 3、4 步负责将最新构建产物替换到 /Applications。
-- 第 5 步负责拉起 /Applications 里面的新应用。
-- 第 6 步用于向用户证明当前看到的是新版本进程。
-
-### 8.5 最终汇报要求
-
-在最终回复中明确说明：
-
-- 改了什么。
-- 是否执行了构建。
-- 是否成功移动并拉起 /Applications 里面的新进程。
-- 是否验证到新进程 PID 或产物路径。
-- 如果没做到，阻塞点是什么。
+Verify the installed version, source artifact identity, process executable and actual changed interface. A PID or a successful build alone is not UI acceptance. Report observed behavior and concrete remaining limits.
 
 ## 9. 决策准则
 
@@ -248,13 +158,13 @@ pgrep -fal '/Applications/NeatGit.app/Contents/MacOS/NeatGit'
 1. 与 `README.md` 中的项目愿景保持一致。
 2. 保持 macOS 原生、简洁、高频 Git 工作流导向。
 3. 选择 minimal 但完整、可运行、可验证的实现。
-4. 代码改动完成后必须尝试按固定流程构建、杀旧进程并重启预览；如果环境阻塞，必须如实报告。
+4. Complete the documented build, signed release, installation and changed-surface verification; report concrete environmental limits.
 
 ---
 
 ## 文档导航
 
-- [`docs/NEATGIT_KNOWLEDGE_BASE.md`](docs/NEATGIT_KNOWLEDGE_BASE.md)：修改 Swift 模块、UI/API 与系统版本升级、扩展仓库/文件/Diff/提交/LLM 功能、评审或排障前必读；遵循原生界面边界、单文件协议和缓存规则。
+- [`docs/NEATGIT_KNOWLEDGE_BASE.md`](docs/NEATGIT_KNOWLEDGE_BASE.md)：修改 Swift 模块、UI/API、紧凑设置与系统版本升级、扩展仓库/文件/Diff/提交/LLM 功能、评审或排障前必读；遵循原生界面边界、单文件协议和缓存规则。
 - [`docs/AI_COMMIT_GUIDE.md`](docs/AI_COMMIT_GUIDE.md)：修改、扩展、重构或简化 AI commit message 生成逻辑（含调用链、prompt 构建、评分策略）、接入真实提交/推送流程、调试 LLM 调用失败、评审提交相关代码前必读。
 - [`docs/LLM_COMMIT_MESSAGE_RESEARCH.md`](docs/LLM_COMMIT_MESSAGE_RESEARCH.md)：改进 AI commit prompt 设计、评审 commit 生成策略、调研行业方案、决定是否引入多步流水线或 map-reduce 架构前必读。
 - [`docs/GITIGNORE_KNOWLEDGE_BASE.md`](docs/GITIGNORE_KNOWLEDGE_BASE.md)：修改或扩展 .gitignore 写入逻辑、忽略规则生成、右键忽略菜单交互、排查忽略操作失败前必读。

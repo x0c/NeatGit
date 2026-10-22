@@ -1,6 +1,28 @@
-<?xml version="1.0" standalone="yes"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>NeatGit</title>
+        <item>
+            <title>0.1.1</title>
+            <pubDate>Thu, 22 Oct 2026 13:44:08 +0800</pubDate>
+            <link>https://github.com/x0c/NeatGit</link>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[### Changed
+
+- Compact, content-sized native Settings: aligned connection fields, system-prompt editing, update switches and app actions fit on one page without scrolling.
+- Edit long generation instructions in a native sheet with Cancel, Done and Restore Default; cancelling preserves the saved prompt.
+
+### 简体中文
+
+- 设置改为紧凑、按内容定高的原生分组表单：连接配置、生成说明入口、更新开关和应用操作在一页完整显示，无需滚动。
+- 长篇生成说明在原生弹窗中编辑，提供取消、完成和恢复默认；取消不会修改已保存内容。]]></description>
+            <enclosure url="https://github.com/x0c/NeatGit/releases/download/v0.1.1/NeatGit-0.1.1.zip" length="5073420" type="application/octet-stream" sparkle:edSignature="E0D67sI+OJbHlj2AtHl/DEeb6mUqHTdiRhB5LIjuavOX9f7U7K35p3XMYbGgFKApWhWI/+LP9rl3H8qljEsLAQ=="></enclosure>
+        </item>
     </channel>
-</rss>
+</rss><!-- sparkle-signatures:
+edSignature: l/d1RWE8Csl8T16Ksyj9DSF021bPkjVYUAQLTw7bnW1D352hh2HHk8HZBo01FnJljWGO2WtYQotKDzWMKMrSCw==
+length: 1777
+-->

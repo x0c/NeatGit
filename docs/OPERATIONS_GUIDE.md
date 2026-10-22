@@ -165,3 +165,21 @@ The first tag push was blocked by leakgate's historical false positive on the AP
 Archive diagnostics: Xcode also reports that the target has no App Category. This comes from the pre-existing project/Info metadata, not the Settings code. Direct download currently has no category-dependent behavior; retain the notice in this bounded visual release. Residual risk: category metadata is absent in system catalogs; set Developer Tools before any store submission/metadata cleanup. No Swift compiler or analyzer warning remains in the current app or Mutex test code. The AppIntents extraction notices for the app/test targets remain assessed above.
 
 Installed 0.1.1: the complete Chinese/light Settings window was inspected at 480×441, with all four connection/edit rows, both update switches and the app-actions row visible and aligned, without a settings scrollbar. Fresh installed pixels are in the temporary acceptance directory `neatgit-settings-20261022`; they are not a physical-keyboard or VoiceOver pass. The original app rejected an AX menu query while locked; exact-PID `NSRunningApplication.terminate()` subsequently exited normally and permitted atomic replacement. Native Quit does not require force termination. Opening the installed Settings scene succeeded independently despite a subsequent AX menu-enumeration error.
+
+### Final 0.1.1 delivery evidence
+
+The GitHub release is public at `https://github.com/x0c/NeatGit/releases/tag/v0.1.1`. All three assets were downloaded anonymously in full and matched local bytes:
+
+| Asset | Bytes | SHA-256 |
+|---|---:|---|
+| NeatGit-0.1.1.dmg | 5075341 | ab958dd2561385e3a2305af11822d24d9689ca7d35c3fdbbb4e7400690c9d11b |
+| NeatGit-0.1.1.zip | 5073420 | a19b1446c94aa1bd4928745c1cd425ec1f592ed56fadaf29136b8377f957ce8b |
+| SHA256SUMS.txt | 168 | b159ed54f79cee9357834ce4d00d9582309150e8fea1abcf3062baebb3c7e7f5 |
+
+The installed executable matches the signed export. The normal public `SUFeedURL` now serves build 2; its embedded Ed25519 feed signature and the ZIP enclosure signature passed against the installed public key. The first raw-CDN response was the old empty feed; propagation was verified without replacing assets. A transient GitHub API EOF during draft publication was retried only at that step. Sparkle 2.10.0 was used consistently in Debug build/analyze, test builds and the signed export.
+
+A `sign_update --verify` process stalled because the inspected tool loads a Keychain key pair even for verification. Only that owned stalled process was stopped, and verification completed with CryptoKit plus the installed public key. The shared signing guide owns the reusable procedure; no secret was exported or logged.
+
+The current desktop UI regression was attempted after `build-for-testing`; XCUITest failed to initialize with `Timed out while enabling automation mode` before entering the test. This leaves prompt Cancel/Done, physical keyboard and VoiceOver unverified under the locked session. The 29/30 component result and the unchanged locked-WebKit visible-folded-lines failure remain explicit; no skipped or failed assertion is counted as passed. Light/dark component renders and installed Chinese/light Settings geometry passed. The existing lack of a product app-icon asset remains outside this visual settings change; the about row uses the actual system application icon without inventing a brand asset.
+
+Preferences were compared through hashes, without dumping credentials. The API URL key changed from absent to the existing default when the native field initialized; its effective URL was unchanged. Model, API key and system-prompt keys were unchanged. No user repository commit/push or paid AI call was performed during UI acceptance. The user’s app was initially running and remains running; no temporary display or permanent appearance/power setting was introduced.

@@ -1,2 +1,4 @@
 # Historical StorageKey.apiKey literal "llm.apiKey" is a preference key, not a credential.
 fp:31a7c96469c01cd4
+# Same preference-key literal quoted in the diagnostic explanation, not a credential.
+fp:569a907d04355322

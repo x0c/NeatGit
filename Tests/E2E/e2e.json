@@ -1,0 +1,11 @@
+{
+  "app_path": ".build/e2e-derived/Build/Products/Debug/NeatGit.app",
+  "bundle_id": "io.github.x0c.neatgit",
+  "window_size": [1400, 860],
+  "launch_args": ["--e2e-window-size", "1400x860"],
+  "build": false,
+  "configuration": "Debug",
+  "artifacts": "Tests/E2E/artifacts",
+  "baselines": "Tests/E2E/baselines",
+  "templates": "Tests/E2E/templates"
+}

@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct NeatGitApp: App {
+    @NSApplicationDelegateAdaptor(NeatGitApplicationDelegate.self) private var appDelegate
     @State private var llmSettingsStore = LLMSettingsStore()
     @State private var aiCommitDebugStore = AICommitDebugStore()
 

@@ -3,6 +3,7 @@ import Foundation
 final class GitRepositoryScanner: @unchecked Sendable {
     private let fileManager = FileManager.default
     private let maxDepth = 6
+    private static let overrideRootMaxDepth = 3
     private let excludedDirectoryNames: Set<String> = [
         ".Trash",
         ".cache",
@@ -29,8 +30,10 @@ final class GitRepositoryScanner: @unchecked Sendable {
     ]
 
     func scan() async -> [GitRepository] {
-        let homeDirectory = fileManager.homeDirectoryForCurrentUser
-        let maxDepth = self.maxDepth
+        // `--repository-root` 指定的根目录只扫它自己那一棵树，深度不跟随主目录的上限。
+        let overrideRoot = LaunchOptions.repositoryRoot
+        let homeDirectory = overrideRoot ?? fileManager.homeDirectoryForCurrentUser
+        let maxDepth = overrideRoot == nil ? self.maxDepth : Self.overrideRootMaxDepth
         let excludedDirectoryNames = self.excludedDirectoryNames
 
         let operation: @Sendable () -> [GitRepository] = {

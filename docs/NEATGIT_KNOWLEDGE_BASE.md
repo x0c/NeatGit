@@ -25,6 +25,7 @@ NeatGit 是面向 macOS 的原生 Git 客户端（SwiftUI 构建）。核心循�
   - 2.9 状态管理规范
   - 2.10 仓库扫描约束
   - 2.11 应用内更新与签名发布约束
+  - 2.12 后台端到端验收（Tests/E2E）
 - 三、AI 易错点（10 条）
 - 四、验证路径
 - 五、关联文档
@@ -280,6 +281,18 @@ MonacoDiffView → MonacoDiffController → WebView(page)
 - **工程配置变更**（新增/删除/移动 Swift 文件）：必须先改 `project.yml`，再 `xcodegen generate`，不要只手改 xcodeproj。
 - **Monaco 前端变更**：`cd Web/MonacoDiff && npm run build` 直接生成到 `NeatGitApp/Resources/MonacoDiff/`。文件 hash 会变化，之后需在仓库根执行 `xcodegen generate` 更新工程资源列表，不另复制 dist。
 - **回归**：`NeatGitTests` 覆盖原生控件、差异 store 和真实 WebView 桥接；`NeatGitUITests` 覆盖窗口点击路径。运行命令与锁屏限制见 [Operations 指南](OPERATIONS_GUIDE.md)。
+- **后台端到端验收**：`./Tests/E2E/run_e2e.sh`（pytest，见下节 2.12）。构建产物在 `.build/e2e-derived/Build/Products/Debug/NeatGit.app`，`Tests/E2E/e2e.json` 用 `app_path` 指向它、`build: false`：harness 自带的 xcodebuild 路径对 xcodegen 工程不带 `-scheme`，会直接报错。
+
+### 2.12 后台端到端验收（Tests/E2E，2026-11）
+
+窗口级截图 + AX 交互的 pytest 套件，全程不抢前台、不移动光标；每次运行都在 `/tmp/neatgit-e2e` 重建一次性仓库（`Tests/E2E/fixture_repo.py`），不碰本人主目录。
+
+- **扫描根目录**：`--repository-root <path>` 启动参数把 `GitRepositoryScanner` 的根从用户主目录换成指定目录（深度上限 3）。不传参数时行为完全不变，因此仓库列表仍然来自主目录扫描；端到端用例靠这个参数打开临时仓库，不经过任何系统面板。
+- **窗口呈现**：`--e2e-testing` 下由 `E2ETestWindowController`（`NeatGitApp/Services/E2ETestWindow.swift`）自建 AppKit 窗口并 `orderBack(nil)`。macOS 26 上 `WindowGroup` 在 `open -g` 后台启动时不创建任何 NSWindow（进程健康、零窗口），只有被激活才 ordering；这条路径是截图能拿到窗口的前提，生产路径不传该参数就不走。窗口尺寸取 `--e2e-window-size WxH`（默认 1400x860），并用 `NSScreen.screens.first` 的可见区域收敛——`NSScreen.main` 会随键盘焦点在多屏之间漂移，导致基线尺寸抖动。
+- **像素基线**：`Tests/E2E/baselines/main-window.png` 是 1400x912 pt 窗口（含标题栏）的整窗图，`max_diff_ratio=0.0`；`capture` 步记录 `occlusion_ratio`（窗口被完全遮挡时仍是 1.0，靠窗口缓冲截图，属预期）。首次运行报 `baseline_created`，之后必须报 `match`；改窗口尺寸或改 UI 用 `E2E_UPDATE_BASELINES=1` 重冻。
+- **光标守卫**：默认 `MACOS_E2E_GUARD=all`，会因本人真实移动鼠标而 `FocusViolation`；本人正在用机器时用 `MACOS_E2E_GUARD=frontmost`（只跳过光标比较，仍验证 App 没有被激活）。
+- **已知断言盲区**：文件行（`RepositoryFilePanel`）的 `file-<item.id>` identifier 被外层 section 的 identifier 吞掉，AX 只能按行文本（值）定位，且行没有 `AXPress`，用例改为按 role+frame 从 driver 快照取 token 后后台点击。行 identifier 恢复后可直接 `driver.press(identifier="file-changed:<path>")`。
+- **UI 边界**：产品没有分支列表和提交历史列表，二者无法用 AX 断言；端到端覆盖的是仓库扫描、三段文件分组、提交区、单文件 diff 与二进制拒绝说明（2.3）。
 
 ---
 

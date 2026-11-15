@@ -17,6 +17,8 @@ final class E2ETestWindowController {
 
     func presentWindowIfNeeded() {
         guard LaunchOptions.isE2ETesting, window == nil else { return }
+        // Pixel baselines cannot depend on the owner's light/dark setting.
+        NSApp.appearance = NSAppearance(named: .aqua)
 
         let contentSize = LaunchOptions.e2eWindowSize
         // 屏幕放得下就整窗留出余量，否则收到可见高度。基准确定用主屏（菜单栏所在屏），

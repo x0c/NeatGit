@@ -99,7 +99,7 @@ curl -fL https://github.com/x0c/NeatGit/releases/download/v0.1.1/NeatGit-0.1.1.d
 - 右侧 diff 目前只支持单文件预览，不支持多文件汇总视图。
 - 当前只支持文本 diff，不支持二进制文件预览。
 - 冲突文件的可视化 diff 还没有接入。
-- 超过约 `750 KB` 的文本文件暂不展示 diff。
+- 超过约 `5 MB` 的文本文件暂不展示 diff。
 - `skip-worktree` 和 `ignored` 文件当前先保留列表能力，右侧预览还未实现。
 - 仓库详情信息（分支、最近提交、远端信息、摘要）还没有做出来。
 

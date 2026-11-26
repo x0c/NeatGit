@@ -70,7 +70,7 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建。
 - 已实现文件列表交互：原生分组折叠、键盘导航、多选和手动刷新；行选择只控制预览，不改变自动提交范围。
 - 已实现 `.gitignore` 追加入口：对 untracked 文件可直接忽略文件名或上级目录，并在写入失败时展示错误。
 - 已实现右侧 diff 预览第一版：单文件文本 diff 已经接入，支持 在“未暂存 / 已暂存”之间切换。
-- 当前 diff 仍有明确边界：只支持单文件、文本内容、约 750 KB  以内文件；冲突文件、二进制文件和多文件汇总仍未完成。
+- 当前 diff 仍有明确边界：只支持单文件、文本内容、约 5 MB 以内文件；冲突文件、二进制文件和多文件汇总仍未完成。
 - 已实现 Monaco Web 预览链路：右侧 diff 依赖 `NeatGitApp/Resources/MonacoDiff/` 下的静态资源和 `MonacoDiffView.swift` 的 JS 注入协议。
 - 已实现底部提交栏：原生多行输入框、AI 生成、提交并推送和“仅提交到本地”；真实调用链以 [AI Commit 指南](docs/AI_COMMIT_GUIDE.md) 为准。
 
@@ -151,6 +151,10 @@ Before replacement, identify the running application by its bundle/executable pa
 
 Verify the installed version, source artifact identity, process executable and actual changed interface. A PID or a successful build alone is not UI acceptance. Report observed behavior and concrete remaining limits.
 
+### 8.6 带宿主的单元测试
+
+运行带宿主的单元测试时，若测试代码自身崩溃，系统会弹出崩溃对话框，打扰正在使用这台电脑的人。断言表达式里不要做可能崩溃的运算；宿主崩溃后立即停止排查，不要反复重跑。
+
 ## 9. 决策准则
 
 遇到不确定情况时，按以下优先级决策：
@@ -167,6 +171,7 @@ Verify the installed version, source artifact identity, process executable and a
 - [`docs/NEATGIT_KNOWLEDGE_BASE.md`](docs/NEATGIT_KNOWLEDGE_BASE.md)：修改 Swift 模块、UI/API、紧凑设置与系统版本升级、扩展仓库/文件/Diff/提交/LLM 功能、评审或排障前必读；遵循原生界面边界、单文件协议和缓存规则。
 - [`docs/AI_COMMIT_GUIDE.md`](docs/AI_COMMIT_GUIDE.md)：修改、扩展、重构或简化 AI commit message 生成逻辑（含调用链、prompt 构建、评分策略）、接入真实提交/推送流程、调试 LLM 调用失败、评审提交相关代码前必读。
 - [`docs/LLM_COMMIT_MESSAGE_RESEARCH.md`](docs/LLM_COMMIT_MESSAGE_RESEARCH.md)：改进 AI commit prompt 设计、评审 commit 生成策略、调研行业方案、决定是否引入多步流水线或 map-reduce 架构前必读。
+- [`docs/LIGHTWEIGHT_RESEARCH.md`](docs/LIGHTWEIGHT_RESEARCH.md)：差异展示技术路线（换原生 / 网页瘦身 / 仅优化）的调研结论、应用体积与内存实测基线、与路线无关的待修缺陷和待决策清单；决定或实施轻量化、更换 diff 渲染方案、对比优化前后指标前必读。
 - [`docs/GITIGNORE_KNOWLEDGE_BASE.md`](docs/GITIGNORE_KNOWLEDGE_BASE.md)：修改或扩展 .gitignore 写入逻辑、忽略规则生成、右键忽略菜单交互、排查忽略操作失败前必读。
 - [`docs/OPERATIONS_GUIDE.md`](docs/OPERATIONS_GUIDE.md)：首次接手项目、本地构建遇到阻碍、验证代码变更、排查 Monaco 空白/扫描卡死/AI 调用失败等运行时问题时必读。
 

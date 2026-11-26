@@ -16,7 +16,7 @@ NeatGit 是面向 macOS 的原生 Git 客户端（SwiftUI 构建）。核心循�
 - 二、核心业务规则与隐性约束
   - 2.1 Git 命令执行基础设施（GitCommandRunner）
   - 2.2 文件状态模型（FileSection / isCheckableForCommit）
-  - 2.3 Diff 当前边界（750 KB / 二进制 / 冲突 / 多文件 / Monaco 渲染 / 只看变更）
+  - 2.3 Diff 当前边界（5 MB / 二进制 / 冲突 / 多文件 / Monaco 渲染 / 只看变更）
   - 2.4 Diff 加载流程
   - 2.5 仓库切换与零加载（SWR）机制
   - 2.6 提交流程（index 同步机制）
@@ -61,22 +61,22 @@ NeatGitApp/
 ├── Domain/           # 纯数据模型，无 I/O
 │   ├── GitRepository.swift          # 仓库实体（路径/名称/ID）
 │   ├── RepositoryFileModels.swift   # 文件状态模型（FileSection / FileItem / FileState）
-│   ├── RepositoryDiffModels.swift   # Diff 相关模型（DiffMode / DiffDocument / MonacoDiffPayload）
+│   ├── RepositoryDiffModels.swift   # Diff 相关模型（DiffMode / DiffDocument / 逐行对照结果 / MonacoDiffPayload）
 │   ├── RepositoryGroup.swift       # 左侧栏分组模型
 │   ├── ChangeKind.swift            # 文件分类枚举 + 权重
 │   ├── DiffLineStat.swift          # diff 行统计 + numstat 解析
 │   ├── CommitMessageCandidate.swift # 结构化输出模型 + JSON 解码
 │   ├── LLMProviderConfiguration.swift # LLM 配置值对象
-│   ├── CommitExclusion.swift       # .gitignore 硬排除逻辑（共享）
-│   └── CommitGenerationStrategy.swift # 生成策略枚举 + 阈值
+│   └── CommitExclusion.swift       # .gitignore 硬排除逻辑（共享）
 ├── Services/         # 纯副作用层，不持有状态
 │   ├── GitCommandSupport.swift      # Git 进程执行基础设施（核心）
 │   ├── GitRepositoryScanner.swift   # 扫描 Home 目录下的 Git 仓库
 │   ├── GitRepositoryStatusLoader.swift  # 读取仓库 git status
 │   ├── GitRepositoryDiffLoader.swift    # 加载并解析文件 diff
+│   ├── TextDiffCalculator.swift     # 进程内计算行级与行内差异（Myers，带预算降级）
 │   ├── GitRepositoryCommitService.swift # 提交 / 推送
 │   ├── GitIgnoreWriter.swift            # 写 .gitignore
-│   ├── CommitMessageGenerationService.swift  # AI commit 协调层（策略选择 + 编排）
+│   ├── CommitMessageGenerationService.swift  # AI commit 协调层（分析 → 构建 prompt → 单次 LLM 调用）
 │   ├── AppUpdater.swift                     # Sparkle 应用内更新桥接（温和提醒）
 │   ├── CommitDiffAnalyzer.swift      # diff 分析、摘要、symbol 提取
 │   ├── CommitPromptBuilder.swift     # prompt 构建 + 摘要/guidance/signals
@@ -88,7 +88,7 @@ NeatGitApp/
 │   ├── RepositoryStatusStore.swift  # 当前仓库文件状态快照（跨仓库 SWR 缓存 + 悬停预取）
 │   ├── RepositoryDiffStore.swift    # 当前选中文件 diff（含预取缓存）
 │   ├── LLMSettingsStore.swift       # LLM 配置（持久化到 UserDefaults）
-│   └── AICommitDebugStore.swift     # AI 生成调试日志（含策略标记）
+│   └── AICommitDebugStore.swift     # AI 生成调试日志
 ├── Views/            # SwiftUI 视图层
 │   ├── Sidebar/      # 左栏：仓库列表与分组
 │   ├── RepositoryStatus/ # 中栏：文件状态面板 + 右栏：预览/diff
@@ -128,6 +128,8 @@ Web/MonacoDiff/       # Vite + Monaco 前端，构建产物内嵌到 Bundle
 
 **`RepositoryFileItem.isCheckableForCommit`**：只有 `section == .changed && !hasConflict` 的文件才能被加入提交。
 
+**冲突判定**：`hasConflict` 即 `RepositoryFileItem.isUnmergedStatus(gitStatusCode)`。七种未合并状态码（`DD` / `AU` / `UD` / `UA` / `DU` / `AA` / `UU`，与 `man git-status` 的对照表一致）全部算冲突；`AA`、`DD` 不含字母 `U`，不能只认 `U`。状态加载器的「冲突」摘要与提交范围共用这一份判断。
+
 **gitStatusCode**：两字符字符串（`XY`），`indexStatusCode = X`（暂存区状态），`workTreeStatusCode = Y`（工作区状态）。重命名/复制文件的原路径记在 `previousPath`。
 
 ### 2.3 Diff 当前边界（2026-06）
@@ -135,7 +137,7 @@ Web/MonacoDiff/       # Vite + Monaco 前端，构建产物内嵌到 Bundle
 **单文件文本 diff 完整约束**：
 
 - 只支持单文件、文本内容。
-- 最大文件大小：750 KB（`maxTextBytes = 750_000`，`GitRepositoryDiffLoader`）。判断时机在 `loadOriginalData` / `loadModifiedData` 之后、`isBinaryData` 检测之前，取 `max(originalData.count, modifiedData.count) > maxTextBytes`，超过则抛出 `GitCommandError`（"文件过大，第一版暂不展示超过 750 KB 的文本 diff。"）。
+- 最大文件大小：5 MB（`maxTextBytes = 5_000_000`，`GitRepositoryDiffLoader`）。判断时机在 `loadContents` 之后、`isBinaryData` 检测之前，取 `max(originalData.count, modifiedData.count) > maxTextBytes`，超过则抛出 `GitCommandError`（"文件过大，暂不展示超过 5 MB 的文本差异。"）。
 - 前置守卫顺序（`makeDocument` 方法内）：① `section == .changed` 检查 → ② `hasConflict` 检查 → ③ `availableDiffModes.contains(mode)` 检查 → ④ 文件大小检查 → ⑤ 二进制检测。任一不满足立即 throw，不会继续执行后续步骤。
 
 **二进制文件处理**：
@@ -175,16 +177,19 @@ Web/MonacoDiff/       # Vite + Monaco 前端，构建产物内嵌到 Bundle
 
 ```
 RepositoryDiffStore.select / selectMode → loadCurrentSelection
-  └─ GitRepositoryDiffLoader.loadDiff(for:in:mode:)
-       └─ loadContents()      # 先定两侧来源（空 / Git 对象 / 工作区文件）
-            ├─ GitCommandRunner.readObjects()  # Git 对象合并成一次 cat-file --batch
-            └─ readWorkingTreeFile()           # 工作区侧直读文件
-                 └─ MonacoDiffView.setDiff()   # JS 注入 window.neatGit.setDiff(payload)
+  └─ GitRepositoryDiffLoader.loadDiff(for:in:mode:)   # 整体在一个 Task.detached 里执行
+       ├─ loadContents()      # 先定两侧来源（空 / Git 对象 / 工作区文件）
+       │    ├─ GitCommandRunner.readObjects()  # Git 对象合并成一次 cat-file --batch
+       │    └─ readWorkingTreeFile()           # 工作区侧直读文件
+       └─ TextDiffCalculator.calculate()      # 进程内算出逐行对照结果，写入 RepositoryDiffDocument.rows
+  └─ MonacoDiffView.setDiff()   # JS 注入 window.neatGit.setDiff(payload)，只传两侧全文
 ```
 
 读内容时不再额外跑 `git diff` 解析 `@@` 行：只看变更改由 Monaco 自己算未变更区域，hunk 模型已废弃。单文件 diff 因此只启动 1 个 git 进程（旧实现是 4–5 个），本机实测 2000 行文件的读取中位数约 15ms。
 
-`RepositoryDiffStore` 有预取缓存（最多 24 条，60ms 悬停延迟触发）。双状态文件通过原生分段选择器切换暂存区/工作区，只读允许的模式；有暂存内容时默认显示暂存区。刷新版本号变化会清理该仓库缓存。
+**逐行对照结果（数据层，界面尚未使用）**：`GitRepositoryDiffLoader.makeDocument` 在同一个后台任务里调用 `TextDiffCalculator.calculate(originalText:modifiedText:)`，把结果写进 `RepositoryDiffDocument` 的 `rows` / `originalLines` / `modifiedLines` / `originalEndsWithoutNewline` / `modifiedEndsWithoutNewline`；主线程不做差异计算，也不为此启动 git 进程。行级用 Myers 算法，超出编辑距离或搜索步数预算的段落降级为「先全部删除、后全部新增」，任何输入都在有限时间内返回；行内只给改动行标字符区间（`RepositoryDiffRow.originalChangedRanges` / `modifiedChangedRanges`，UTF-16 偏移、相对该侧 `text`）。行模型 `RepositoryDiffRow` / `RepositoryDiffLine` / `RepositoryDiffRowKind` 定义在 `Domain/RepositoryDiffModels.swift`，`RepositoryDiffDocument` 的 `==` 不比较 `rows`。界面目前仍是 Monaco 网页差异视图，由它自己计算并渲染差异；逐行对照结果尚未被任何视图读取。
+
+`RepositoryDiffStore` 有预取缓存（最多 24 条，文件行悬停延迟 60ms 触发）。双状态文件通过原生分段选择器切换暂存区/工作区，只读允许的模式；有暂存内容时默认显示暂存区。刷新版本号变化会清理该仓库缓存。
 
 ### 2.5 仓库切换与零加载（SWR）机制
 
@@ -193,9 +198,9 @@ RepositoryDiffStore.select / selectMode → loadCurrentSelection
 - **跨仓库快照缓存**：LRU 上限 10 个仓库（`maxCachedSnapshots`）。`load(for:)` 命中缓存时**同步立即显示旧快照**（零等待），随后后台静默刷新。
 - **版本号纪律**：`applySnapshot` 中新旧快照 `Equatable` 相等时**不递增 `snapshotRevision`**——这是右侧 diff 缓存和选中态不被误清的前提；只有数据真实变化才递增。`RepositoryFileSnapshot` 因此必须保持 `Equatable`，新增字段时注意保持该语义。
 - **刷新失败保留内容**：已有内容时 `applyFailure` 不清空 snapshot，只设置 errorMessage；`RepositoryFilePanel` 中 snapshot 展示优先级高于 errorMessage，错误降级为顶部栏提示。
-- **悬停预取**：侧栏仓库行 `onHover` 进入时触发 `prefetch(for:)`，只填缓存不动 UI；选中时 `fetchSnapshot` 复用进行中的预取任务，同一仓库不会跑两遍 git status。
+- **侧栏悬停预取**：侧栏仓库行只上报进入 / 离开事件（`RepositoryHoverEvent`），停留判定与并发上限都收在 `RepositoryStatusStore.prefetch(for:)`。停留满 200ms（`defaultHoverPrefetchDelay`）才开始，快速划过不触发；同时最多 1 个在途，在途期间只记最新一个目标，离开全部行时尚未开始的一律作废。预取只填缓存不动 UI；选中时 `fetchSnapshot` 复用同仓库在途预取，同一仓库不会跑两遍 git status。选中仓库的正式加载不受预取在途上限约束。
 - **并行加载**：`GitRepositoryStatusLoader.loadSnapshot` 中 `git status` 与 `git ls-files` 通过 `async let` 并行执行，首次加载耗时从两者之和降为最大值。
-- 回归测试：`NeatGitTests/RepositoryStatusStoreTests.swift`（缓存命中立即显示 / 无变化版本号稳定 / 有变化递增 / 失败保留内容 / 预取命中）。
+- 回归测试：`NeatGitTests/RepositoryStatusStoreTests.swift`（缓存命中立即显示 / 无变化版本号稳定 / 有变化递增 / 失败保留内容 / 预取命中与选中复用 / 悬停须停留、单在途、只记最新目标、离开作废）。
 
 ### 2.6 提交流程（index 同步机制）
 
@@ -205,7 +210,9 @@ RepositoryDiffStore.select / selectMode → loadCurrentSelection
 2. 把**在提交列表但未暂存**的 untracked / 有未暂存变更文件 `add -A`（暂存）。
 3. 最后 `commit -m <message>`。
 
-路径通过 stdin 传入（`--pathspec-from-file=- --pathspec-file-nul`），避免路径含空格的问题。
+「提交列表」指 `changedItems` 里通过 `isCommittableByDefault` 的文件。
+
+路径通过 stdin 传入（`--pathspec-from-file=- --pathspec-file-nul`），避免路径含空格的问题；`makePathspecData` 还给每条路径加 `:(literal)` 前缀按字面匹配。Git 默认把路径当通配模式：名为 `a*.txt` 的文件会连带暂存 `av.txt`，`?`、`[` 和开头的 `:` 同样有特殊含义。新增带路径的 Git 命令时两点都要沿用。
 
 **隐性约束**：`.gitignore` 文件被 `shouldExcludeFromDefaultCommit` 硬排除，不会默认加入提交。
 
@@ -215,13 +222,12 @@ RepositoryDiffStore.select / selectMode → loadCurrentSelection
 
 - LLM 调用参数来自 `LLMSettingsStore`：`baseURL` / `apiKey` / `model`，全部持久化到 `UserDefaults`。
 - `CommitMessageGenerationService` 是薄协调层，编排 `CommitDiffAnalyzer`（diff 分析）、`CommitPromptBuilder`（prompt 构建）和 `LLMChatService`（API 调用）。
-- 支持两种生成策略（`CommitGenerationStrategy`）：
-  - `.singlePass`：单次调用，适用于小 diff
-  - `.twoStepMapReduce`：Map（每文件并行摘要）+ Reduce（汇总生成），适用于大 diff（文件数 > 15 或 diff 行数 > 500）
+- 生成只有单次调用一条路径：`CommitDiffAnalyzer.analyze()` 产出 `CommitAnalysisContext` → `CommitPromptBuilder.buildUserPrompt(with:)` → `LLMChatService.complete(... maxTokens: 1024, responseFormat: .jsonObject)`。
+- 新增文件（untracked）没有可比对的基线，`CommitDiffAnalyzer` 直接读工作区正文节选作为 snippet，不取 diff。
 - 结构化输出：`CommitMessageCandidate` 解码 LLM JSON 响应（`type`/`scope`/`subject`/`body`），通过 `composedMessage` 组装为完整 commit message（含 body）。
 - `ChangeKind` 分类逻辑已移到 `Domain/ChangeKind.swift`（public），权重影响 prompt 详略。
 - `.gitignore` 排除逻辑统一到 `CommitExclusion.shouldExcludeFromDefaultCommit`，`CommitDiffAnalyzer` 和 `GitRepositoryCommitService` 共用。
-- 调试日志通过 `AICommitDebugStore` 记录（含策略标记），可在 `AICommitDebugWindowView` 中查看。
+- 调试日志通过 `AICommitDebugStore` 记录，可在 `AICommitDebugWindowView` 中查看。
 
 ### 2.8 Monaco Diff 渲染链路
 
@@ -264,7 +270,7 @@ MonacoDiffView → MonacoDiffController → WebView(page)
 
 1. **修改 diff 功能前**，注意 `RepositoryPreviewPane.swift` 故意用了朴素的 `task(id:)` 刷新方式，原因见第 10 条（Xcode 26.3 / Swift 6.2 编译器崩溃，另见 AGENTS.md §3.1）。
 2. **新增 Git 命令**，必须走 `GitCommandRunner`，不要直接用 `Process`。
-3. **处理路径含空格的文件**，必须通过 `--pathspec-from-file=- --pathspec-file-nul` 传入，不要在参数数组里直接拼路径字符串。
+3. **处理路径含空格的文件**，必须通过 `--pathspec-from-file=- --pathspec-file-nul` 传入并加 `:(literal)` 前缀（见 2.6），不要在参数数组里直接拼路径字符串。
 4. **扩展提交流程**，注意 index 同步逻辑：如果只 stage 增量文件而不 unstage 已排除的暂存文件，会导致意外提交。
 5. **Monaco WebView**，必须通过 `MonacoResourceLoader` 等静态服务就绪并等待导航完成后注入，不直接启动并发渲染任务。
 6. **Swift 6 并发隔离**：改动 Store、Binding、异步任务捕获时，先按 actor 边界思考，再动手，不要等编译器报错后再补 `@Sendable` 标注。
@@ -280,7 +286,7 @@ MonacoDiffView → MonacoDiffController → WebView(page)
 - **本地构建**：`xcodegen generate && xcodebuild -scheme NeatGit -configuration Debug` 或直接用 Xcode 打开 `NeatGit.xcodeproj`。
 - **工程配置变更**（新增/删除/移动 Swift 文件）：必须先改 `project.yml`，再 `xcodegen generate`，不要只手改 xcodeproj。
 - **Monaco 前端变更**：`cd Web/MonacoDiff && npm run build` 直接生成到 `NeatGitApp/Resources/MonacoDiff/`。文件 hash 会变化，之后需在仓库根执行 `xcodegen generate` 更新工程资源列表，不另复制 dist。
-- **回归**：`NeatGitTests` 覆盖原生控件、差异 store 和真实 WebView 桥接；`NeatGitUITests` 覆盖窗口点击路径。运行命令与锁屏限制见 [Operations 指南](OPERATIONS_GUIDE.md)。
+- **回归**：`NeatGitTests` 覆盖原生控件、差异 store、真实 WebView 桥接、提交安全（`CommitSafetyTests`：冲突判定、路径字面匹配）和行级 / 行内差异计算（`TextDiffCalculatorTests`）；`NeatGitUITests` 覆盖窗口点击路径。运行命令与锁屏限制见 [Operations 指南](OPERATIONS_GUIDE.md)。
 - **后台端到端验收**：`./Tests/E2E/run_e2e.sh`（pytest，见下节 2.12）。构建产物在 `.build/e2e-derived/Build/Products/Debug/NeatGit.app`，`Tests/E2E/e2e.json` 用 `app_path` 指向它、`build: false`：harness 自带的 xcodebuild 路径对 xcodegen 工程不带 `-scheme`，会直接报错。
 
 ### 2.12 后台端到端验收（Tests/E2E，2026-11）

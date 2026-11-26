@@ -24,14 +24,7 @@ struct LLMChatMessage: Codable, Sendable {
 struct LLMChatCompletionResult: Sendable {
     let content: String
     let model: String?
-    let usage: LLMChatUsage?
     let finishReason: String?
-}
-
-struct LLMChatUsage: Sendable {
-    let promptTokens: Int?
-    let completionTokens: Int?
-    let totalTokens: Int?
 }
 
 final class LLMChatService: @unchecked Sendable {
@@ -46,11 +39,9 @@ final class LLMChatService: @unchecked Sendable {
         configuration: LLMProviderConfiguration,
         temperature: Double = 0.1,
         maxTokens: Int = 1024,
-        responseFormat: LLMResponseFormat? = nil,
-        disableThinking: Bool = false
+        responseFormat: LLMResponseFormat? = nil
     ) async throws -> LLMChatCompletionResult {
         let endpoint = try makeEndpoint(from: configuration.baseURL)
-        let shouldDisableThinking = disableThinking || Self.shouldDisableThinking(for: configuration)
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -64,7 +55,8 @@ final class LLMChatService: @unchecked Sendable {
                 temperature: temperature,
                 maxTokens: maxTokens,
                 responseFormat: responseFormat,
-                thinking: shouldDisableThinking ? .disabled : nil
+                // 思考模式一律关闭：它会和 max_tokens 抢预算，导致正文为空或被截断。
+                thinking: .disabled
             )
         )
 
@@ -97,22 +89,8 @@ final class LLMChatService: @unchecked Sendable {
         return LLMChatCompletionResult(
             content: content,
             model: completion.model,
-            usage: completion.usage.map { usage in
-                LLMChatUsage(
-                    promptTokens: usage.promptTokens,
-                    completionTokens: usage.completionTokens,
-                    totalTokens: usage.totalTokens
-                )
-            },
             finishReason: finishReason
         )
-    }
-
-    /// DeepSeek V4 默认开启 thinking，会与 max_tokens 抢预算导致 content 为空/截断。
-    private static func shouldDisableThinking(for configuration: LLMProviderConfiguration) -> Bool {
-        let host = configuration.baseURL.host?.lowercased() ?? ""
-        let model = configuration.model.lowercased()
-        return host.contains("deepseek") || model.contains("deepseek")
     }
 
     private func makeEndpoint(from baseURL: URL) throws -> URL {
@@ -132,7 +110,6 @@ final class LLMChatService: @unchecked Sendable {
 
 enum LLMResponseFormat: String, Encodable, Sendable {
     case jsonObject = "json_object"
-    case text = "text"
 
     var typeValue: String { rawValue }
 }
@@ -184,7 +161,6 @@ private struct OpenAIChatCompletionRequest: Encodable, Sendable {
 private struct OpenAIChatCompletionResponse: Decodable, Sendable {
     let choices: [Choice]
     let model: String?
-    let usage: Usage?
 
     struct Choice: Decodable, Sendable {
         let message: LLMChatMessage
@@ -193,18 +169,6 @@ private struct OpenAIChatCompletionResponse: Decodable, Sendable {
         private enum CodingKeys: String, CodingKey {
             case message
             case finishReason = "finish_reason"
-        }
-    }
-
-    struct Usage: Decodable, Sendable {
-        let promptTokens: Int?
-        let completionTokens: Int?
-        let totalTokens: Int?
-
-        private enum CodingKeys: String, CodingKey {
-            case promptTokens = "prompt_tokens"
-            case completionTokens = "completion_tokens"
-            case totalTokens = "total_tokens"
         }
     }
 }

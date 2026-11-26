@@ -1,0 +1,539 @@
+/*
+ * NeatGit 差异页面样式。
+ * 所有颜色都写成根节点上的变量，深浅色与「增强对比度」只改变量取值；
+ * 切换外观时页面脚本只改根节点属性，不需要重建差异视图。
+ */
+:root {
+  color-scheme: light dark;
+
+  /* 页面与行号栏（取值对齐 macOS 浅色外观与常见浅色代码主题） */
+  --ng-page-background: #fbfbfd;
+  --ng-text-color: #24303c;
+  --ng-gutter-background: #f8f9fb;
+  --ng-line-number: #a0a8b3;
+  --ng-line-number-active: #5d6874;
+  --ng-border: #d8dee8;
+  --ng-active-line: #f3f5f8;
+
+  /* 改动行：整行底色 */
+  --ng-inserted-line: #e7f2ea;
+  --ng-removed-line: #f7e9e7;
+  --ng-modified-line: #f3f1ec;
+  /* 行内（字符级）底色与描边 */
+  --ng-inserted-text: rgba(95, 163, 115, 0.13);
+  --ng-removed-text: rgba(201, 124, 124, 0.12);
+  --ng-inserted-text-border: rgba(141, 185, 154, 0.4);
+  --ng-removed-text-border: rgba(215, 162, 162, 0.4);
+  /* 行号格子底色与行前标记条 */
+  --ng-inserted-gutter: #ddeee2;
+  --ng-removed-gutter: #f2dedb;
+  --ng-modified-gutter: #e6e3db;
+  --ng-inserted-indicator: #4c9a5c;
+  --ng-removed-indicator: #c9605a;
+  --ng-modified-indicator: #a98a4b;
+
+  /* 选区 */
+  --ng-selection: #dce7f7;
+  --ng-selection-inactive: #e8eef8;
+  /* 「只看变更」的折叠占位行 */
+  --ng-collapsed-background: #eef0f3;
+  --ng-collapsed-text: #5d6874;
+  --ng-collapsed-hover-text: #24303c;
+  --ng-collapsed-line: #a0a8b3;
+  --ng-focus: #3478f6;
+
+  /* 语法颜色（取值对齐旧页面浅色主题的代码配色） */
+  --ng-syn-comment: #008000;
+  --ng-syn-string: #a31515;
+  --ng-syn-regexp: #811f3f;
+  --ng-syn-number: #098658;
+  --ng-syn-keyword: #0000ff;
+  --ng-syn-type: #267f99;
+  --ng-syn-function: #795e26;
+  --ng-syn-property: #0451a5;
+  --ng-syn-variable: #001080;
+  --ng-syn-tag: #800000;
+  --ng-syn-link: #0451a5;
+  --ng-syn-invalid: #cd3131;
+
+  /* 查找面板与匹配高亮 */
+  --ng-panel-background: #f6f6f7;
+  --ng-field-background: #ffffff;
+  --ng-field-border: #b9bfc9;
+  --ng-match: rgba(234, 92, 0, 0.33);
+  --ng-match-selected: rgba(133, 49, 245, 0.5);
+  --ng-selection-match: rgba(89, 160, 255, 0.25);
+
+  background: var(--ng-page-background);
+  color: var(--ng-text-color);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* 深色：中性深灰背景（非纯黑），新增 / 删除行用低亮度低饱和的绿红。 */
+:root[data-appearance='dark'] {
+  --ng-page-background: #1f1f22;
+  --ng-text-color: #d3d6db;
+  --ng-gutter-background: #1b1b1e;
+  --ng-line-number: #5b5f66;
+  --ng-line-number-active: #c3c7cd;
+  --ng-border: #33363c;
+  --ng-active-line: #26262a;
+  --ng-inserted-line: #1e2e22;
+  --ng-removed-line: #2e1f1f;
+  --ng-modified-line: #2a2a2e;
+  --ng-inserted-text: rgba(58, 107, 74, 0.27);
+  --ng-removed-text: rgba(122, 59, 59, 0.27);
+  --ng-inserted-text-border: rgba(76, 138, 95, 0.33);
+  --ng-removed-text-border: rgba(160, 92, 92, 0.33);
+  --ng-inserted-gutter: #243528;
+  --ng-removed-gutter: #352525;
+  --ng-modified-gutter: #30302a;
+  --ng-inserted-indicator: #6fbf83;
+  --ng-removed-indicator: #d98079;
+  --ng-modified-indicator: #c9a96a;
+  --ng-selection: #3a4a63;
+  --ng-selection-inactive: #2e3037;
+  --ng-collapsed-background: #2f2f35;
+  --ng-collapsed-text: #b4b8c0;
+  --ng-collapsed-hover-text: #e6e8eb;
+  --ng-collapsed-line: #6b7079;
+  --ng-focus: #4a9bf6;
+
+  --ng-syn-comment: #6a9955;
+  --ng-syn-string: #ce9178;
+  --ng-syn-regexp: #d16969;
+  --ng-syn-number: #b5cea8;
+  --ng-syn-keyword: #569cd6;
+  --ng-syn-type: #4ec9b0;
+  --ng-syn-function: #dcdcaa;
+  --ng-syn-property: #9cdcfe;
+  --ng-syn-variable: #9cdcfe;
+  --ng-syn-tag: #569cd6;
+  --ng-syn-link: #6fb8ff;
+  --ng-syn-invalid: #f48771;
+
+  --ng-panel-background: #26262a;
+  --ng-field-background: #1b1b1f;
+  --ng-field-border: #555962;
+  --ng-match: rgba(234, 138, 0, 0.45);
+  --ng-match-selected: rgba(138, 156, 255, 0.6);
+  --ng-selection-match: rgba(89, 160, 255, 0.3);
+}
+
+/* 增强对比度（浅色）：底色用系统画布色，改动用饱和度高的纯色。 */
+:root[data-high-contrast='true'] {
+  --ng-page-background: Canvas;
+  --ng-text-color: CanvasText;
+  --ng-gutter-background: Canvas;
+  --ng-line-number: CanvasText;
+  --ng-line-number-active: CanvasText;
+  --ng-border: CanvasText;
+  --ng-active-line: transparent;
+  --ng-inserted-line: #b5e0ba;
+  --ng-removed-line: #f3c9c6;
+  --ng-modified-line: #ddd8c4;
+  --ng-inserted-text: rgba(16, 124, 16, 0.5);
+  --ng-removed-text: rgba(197, 15, 31, 0.45);
+  --ng-inserted-text-border: #107c10;
+  --ng-removed-text-border: #c50f1f;
+  --ng-inserted-gutter: #b5e0ba;
+  --ng-removed-gutter: #f3c9c6;
+  --ng-modified-gutter: #ddd8c4;
+  --ng-inserted-indicator: #107c10;
+  --ng-removed-indicator: #c50f1f;
+  --ng-modified-indicator: #7a5b00;
+  --ng-selection: Highlight;
+  --ng-selection-inactive: Highlight;
+  --ng-collapsed-background: #dcdcdc;
+  --ng-collapsed-text: #000000;
+  --ng-collapsed-hover-text: #000000;
+  --ng-collapsed-line: #000000;
+  --ng-focus: #000000;
+
+  /* 增强对比度（浅色）：在白底上用深色 */
+  --ng-syn-comment: #005a00;
+  --ng-syn-string: #8b0000;
+  --ng-syn-regexp: #6b1028;
+  --ng-syn-number: #003f6e;
+  --ng-syn-keyword: #0000a8;
+  --ng-syn-type: #003b63;
+  --ng-syn-function: #5a3e00;
+  --ng-syn-property: #00348a;
+  --ng-syn-variable: #000040;
+  --ng-syn-tag: #7a0000;
+  --ng-syn-link: #00348a;
+  --ng-syn-invalid: #a00000;
+
+  --ng-panel-background: #e0e0e0;
+  --ng-field-background: #ffffff;
+  --ng-field-border: #000000;
+  --ng-match: rgba(200, 90, 0, 0.6);
+  --ng-match-selected: rgba(70, 40, 200, 0.7);
+  --ng-selection-match: rgba(0, 60, 200, 0.35);
+}
+
+/* 增强对比度（深色）：深底上用高亮度的绿红。 */
+:root[data-appearance='dark'][data-high-contrast='true'] {
+  /* 这条规则要排在浅色高对比之后：系统色（Canvas）在深色下的取值由系统决定，这里明确写回深底浅字，
+     并把文字、行号、分隔线的对比度再拉高一档。 */
+  --ng-page-background: #000000;
+  --ng-text-color: #ffffff;
+  --ng-gutter-background: #0e0e10;
+  --ng-line-number: #d0d3d9;
+  --ng-line-number-active: #ffffff;
+  --ng-border: #ffffff;
+  --ng-active-line: #1c1c20;
+  --ng-selection: Highlight;
+  --ng-selection-inactive: Highlight;
+  --ng-panel-background: #1c1c20;
+  --ng-field-background: #000000;
+  --ng-field-border: #ffffff;
+  --ng-collapsed-background: #2f2f35;
+  --ng-inserted-line: #123a1c;
+  --ng-removed-line: #4a1414;
+  --ng-modified-line: #33301f;
+  --ng-inserted-text: rgba(74, 222, 128, 0.5);
+  --ng-removed-text: rgba(255, 99, 132, 0.5);
+  --ng-inserted-text-border: #4ade80;
+  --ng-removed-text-border: #ff6384;
+  --ng-inserted-gutter: #123a1c;
+  --ng-removed-gutter: #4a1414;
+  --ng-modified-gutter: #33301f;
+  --ng-inserted-indicator: #4ade80;
+  --ng-removed-indicator: #ff6384;
+  --ng-modified-indicator: #d4b45c;
+  --ng-collapsed-background: #2f2f35;
+  --ng-collapsed-text: #ffffff;
+  --ng-collapsed-hover-text: #ffffff;
+  --ng-collapsed-line: #ffffff;
+  --ng-focus: #ffffff;
+
+  /* 增强对比度（深色）：在黑底上用亮色 */
+  --ng-syn-comment: #7ee787;
+  --ng-syn-string: #ffb86c;
+  --ng-syn-regexp: #ff9bce;
+  --ng-syn-number: #79c0ff;
+  --ng-syn-keyword: #79b8ff;
+  --ng-syn-type: #50fa7b;
+  --ng-syn-function: #f1fa8c;
+  --ng-syn-property: #92d4ff;
+  --ng-syn-variable: #e6edf3;
+  --ng-syn-tag: #ff7b72;
+  --ng-syn-link: #92d4ff;
+  --ng-syn-invalid: #ff8a80;
+
+  --ng-panel-background: #2f2f35;
+  --ng-field-background: #000000;
+  --ng-field-border: #ffffff;
+  --ng-match: rgba(255, 170, 0, 0.65);
+  --ng-match-selected: rgba(150, 170, 255, 0.75);
+  --ng-selection-match: rgba(120, 170, 255, 0.45);
+}
+
+html,
+body,
+#editor-shell {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--ng-page-background);
+}
+
+.page {
+  height: 100%;
+}
+
+#editor-shell {
+  min-height: 0;
+}
+
+.editor-surface {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ---------- 布局：并排视图整体滚动，单栏视图由编辑器自身滚动 ---------- */
+
+#diff-editor .cm-mergeView {
+  height: 100%;
+  overflow: auto;
+}
+
+#diff-editor.ng-unified .cm-editor {
+  height: 100%;
+}
+
+/* 两侧之间的分隔线 */
+#diff-editor .cm-mergeViewEditors > .cm-mergeViewEditor + .cm-mergeViewEditor {
+  border-left: 1px solid var(--ng-border);
+}
+
+/* ---------- 编辑器基础外观 ---------- */
+
+#diff-editor .cm-editor {
+  background: var(--ng-page-background);
+  color: var(--ng-text-color);
+}
+
+#diff-editor .cm-scroller {
+  font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+#diff-editor .cm-content {
+  padding: 4px 0;
+}
+
+#diff-editor .cm-gutters {
+  background: var(--ng-gutter-background);
+  color: var(--ng-line-number);
+  border: none;
+}
+
+#diff-editor .cm-lineNumbers .cm-gutterElement {
+  min-width: 44px;
+  padding: 0 10px 0 12px;
+}
+
+#diff-editor .cm-activeLineGutter {
+  color: var(--ng-line-number-active);
+}
+
+/* ---------- 改动行：整行底色 ---------- */
+
+#diff-editor .cm-merge-a .cm-changedLine,
+#diff-editor .cm-deletedChunk .cm-deletedLine {
+  background-color: var(--ng-removed-line);
+}
+
+#diff-editor .cm-merge-b .cm-changedLine {
+  background-color: var(--ng-inserted-line);
+}
+
+#diff-editor .cm-merge-b .cm-inlineChangedLine {
+  background-color: var(--ng-modified-line);
+}
+
+#diff-editor .cm-deletedChunk {
+  padding-left: 0;
+  background-color: transparent;
+}
+
+/* ---------- 行内（字符级）高亮 ---------- */
+
+#diff-editor .cm-merge-a .cm-changedText,
+#diff-editor .cm-deletedChunk .cm-deletedText,
+#diff-editor .cm-merge-b .cm-deletedText {
+  background: var(--ng-removed-text);
+  box-shadow: inset 0 0 0 1px var(--ng-removed-text-border);
+}
+
+#diff-editor .cm-merge-b .cm-changedText {
+  background: var(--ng-inserted-text);
+  box-shadow: inset 0 0 0 1px var(--ng-inserted-text-border);
+}
+
+#diff-editor .cm-insertedLine,
+#diff-editor .cm-deletedLine,
+#diff-editor .cm-deletedChunk del {
+  text-decoration: none;
+}
+
+/* ---------- 行前标记条 ---------- */
+
+#diff-editor .cm-changeGutter {
+  width: 4px;
+  padding-left: 1px;
+}
+
+#diff-editor .cm-changeGutter .cm-gutterElement {
+  display: flex;
+  align-items: stretch;
+}
+
+#diff-editor .cm-merge-a .cm-changedLineGutter,
+#diff-editor .cm-deletedLineGutter {
+  display: block;
+  width: 100%;
+  background: var(--ng-removed-indicator);
+}
+
+#diff-editor .cm-merge-b .cm-changedLineGutter {
+  display: block;
+  width: 100%;
+  background: var(--ng-inserted-indicator);
+}
+
+#diff-editor .cm-merge-b .cm-inlineChangedLineGutter {
+  display: block;
+  width: 100%;
+  background: var(--ng-modified-indicator);
+}
+
+/* ---------- 行号格子底色 ---------- */
+
+#diff-editor .cm-lineNumbers .ng-removed-number {
+  background-color: var(--ng-removed-gutter);
+}
+
+#diff-editor .cm-lineNumbers .ng-inserted-number {
+  background-color: var(--ng-inserted-gutter);
+}
+
+#diff-editor .cm-lineNumbers .ng-modified-number {
+  background-color: var(--ng-modified-gutter);
+}
+
+/* ---------- 选区与当前行 ---------- */
+
+#diff-editor .cm-selectionBackground {
+  background: var(--ng-selection-inactive);
+}
+
+#diff-editor .cm-focused .cm-selectionBackground {
+  background: var(--ng-selection);
+}
+
+#diff-editor .cm-activeLine {
+  background: var(--ng-active-line);
+}
+
+/* ---------- 「只看变更」：折叠占位行 ---------- */
+
+#diff-editor .ng-collapsedLines {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 27px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 10px;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  user-select: none;
+  font: 12px/1 system-ui, -apple-system, sans-serif;
+  color: var(--ng-collapsed-text);
+  background: linear-gradient(
+    to bottom,
+    transparent 0,
+    var(--ng-collapsed-background) 30%,
+    var(--ng-collapsed-background) 70%,
+    transparent 100%
+  );
+}
+
+#diff-editor .ng-collapsedLines:hover {
+  color: var(--ng-collapsed-hover-text);
+  box-shadow: inset 0 1px 0 var(--ng-collapsed-line), inset 0 -1px 0 var(--ng-collapsed-line);
+}
+
+#diff-editor .ng-collapsedLines:focus-visible {
+  outline: 2px solid var(--ng-focus);
+  outline-offset: -2px;
+}
+
+#diff-editor .ng-collapsed-arrow {
+  width: 10px;
+  height: 6px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#diff-editor .ng-collapsed-text {
+  flex: none;
+}
+
+/* ---------- 语法颜色：类名由 languageSupport.js 按标签给出，这里只定颜色 ---------- */
+
+#diff-editor .ng-syn-comment { color: var(--ng-syn-comment); }
+#diff-editor .ng-syn-string { color: var(--ng-syn-string); }
+#diff-editor .ng-syn-regexp { color: var(--ng-syn-regexp); }
+#diff-editor .ng-syn-number { color: var(--ng-syn-number); }
+#diff-editor .ng-syn-keyword { color: var(--ng-syn-keyword); }
+#diff-editor .ng-syn-type { color: var(--ng-syn-type); }
+#diff-editor .ng-syn-function { color: var(--ng-syn-function); }
+#diff-editor .ng-syn-property { color: var(--ng-syn-property); }
+#diff-editor .ng-syn-variable { color: var(--ng-syn-variable); }
+#diff-editor .ng-syn-tag { color: var(--ng-syn-tag); }
+#diff-editor .ng-syn-invalid { color: var(--ng-syn-invalid); }
+#diff-editor .ng-syn-meta { color: var(--ng-syn-comment); }
+#diff-editor .ng-syn-link { color: var(--ng-syn-link); text-decoration: underline; }
+#diff-editor .ng-syn-heading { color: var(--ng-syn-keyword); font-weight: 600; }
+#diff-editor .ng-syn-emphasis { font-style: italic; }
+#diff-editor .ng-syn-strong { font-weight: 600; }
+
+/* ---------- 差异视图内查找 ---------- */
+
+#diff-editor .cm-panels {
+  background-color: var(--ng-panel-background);
+  color: var(--ng-text-color);
+}
+
+#diff-editor .cm-panel {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+}
+
+#diff-editor .cm-panel.cm-search {
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+#diff-editor .cm-search label {
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+#diff-editor .cm-panel input.cm-textfield {
+  background: var(--ng-field-background);
+  color: var(--ng-text-color);
+  border: 1px solid var(--ng-field-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  min-width: 160px;
+}
+
+#diff-editor .cm-panel button.cm-button {
+  background: var(--ng-field-background);
+  background-image: none;
+  color: var(--ng-text-color);
+  border: 1px solid var(--ng-field-border);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+#diff-editor .cm-panel input[type='checkbox'] {
+  accent-color: var(--ng-focus);
+}
+
+#diff-editor .cm-searchMatch {
+  background: var(--ng-match);
+}
+
+#diff-editor .cm-searchMatch.cm-searchMatch-selected {
+  background: var(--ng-match-selected);
+  outline: 1px solid var(--ng-match-selected);
+}
+
+#diff-editor .cm-selectionMatch {
+  background: var(--ng-selection-match);
+}
+
+/* 只读：不显示会让人以为能输入的闪烁光标（选区仍然可见） */
+#diff-editor .cm-cursorLayer {
+  display: none;
+}
+

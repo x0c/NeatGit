@@ -1,7 +1,7 @@
 import Foundation
 
 final class GitRepositoryDiffLoader: @unchecked Sendable {
-    private let maxTextBytes = 750_000
+    private let maxTextBytes = 5_000_000
 
     func loadDiff(
         for item: RepositoryFileItem,
@@ -33,7 +33,7 @@ final class GitRepositoryDiffLoader: @unchecked Sendable {
         let (originalData, modifiedData) = try loadContents(for: item, in: repository, mode: mode)
 
         if max(originalData.count, modifiedData.count) > maxTextBytes {
-            throw GitCommandError(message: "文件过大，第一版暂不展示超过 750 KB 的文本 diff。")
+            throw GitCommandError(message: "文件过大，暂不展示超过 5 MB 的文本差异。")
         }
 
         if isBinaryData(originalData) || isBinaryData(modifiedData) {
@@ -43,6 +43,8 @@ final class GitRepositoryDiffLoader: @unchecked Sendable {
         let originalText = decodeText(originalData)
         let modifiedText = decodeText(modifiedData)
 
+        // 加载只取两侧全文，不做逐行对照：当前差异视图由网页侧自己算，逐行对照结果
+        // 只在调用 calculatingDiffRows() 时按需计算，悬停预读因此不再付出这份开销。
         return RepositoryDiffDocument(
             repositoryPath: repository.path,
             filePath: item.path,

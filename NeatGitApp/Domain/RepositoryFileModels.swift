@@ -87,8 +87,19 @@ struct RepositoryFileItem: Identifiable, Hashable, Sendable {
         return gitStatusCode.dropFirst().first
     }
 
+    /// porcelain v2 / 短格式里全部七种「未合并状态」的状态码，与 `man git-status` 的对照表一致。
+    ///
+    /// 其中 `AA`（双方新增）与 `DD`（双方删除）不含字母 U，只认 U 会把它们漏成普通新增 / 删除。
+    static let unmergedStatusCodes: Set<String> = ["DD", "AU", "UD", "UA", "DU", "AA", "UU"]
+
+    /// 给定的两字符状态码是否表示未合并（冲突）。状态加载器与文件模型共用这一份判断。
+    static func isUnmergedStatus(_ statusCode: String) -> Bool {
+        unmergedStatusCodes.contains(statusCode)
+    }
+
     var hasConflict: Bool {
-        [indexStatusCode, workTreeStatusCode].contains("U")
+        guard let gitStatusCode else { return false }
+        return Self.isUnmergedStatus(gitStatusCode)
     }
 
     var isCheckableForCommit: Bool {

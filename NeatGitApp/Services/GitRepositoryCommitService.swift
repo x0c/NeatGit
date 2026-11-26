@@ -167,11 +167,17 @@ final class GitRepositoryCommitService: @unchecked Sendable {
         _ = try GitCommandRunner.requireSuccess(result, defaultMessage: defaultMessage)
     }
 
+    /// 把路径转成 Git 的 pathspec 输入。
+    ///
+    /// 路径默认按通配规则解释：名为 `a*.txt` 的文件会把 `av.txt` 一并暂存，
+    /// `?`、`[` 和开头的 `:` 同样有特殊含义。每条路径都加 `:(literal)` 前缀（见 `man gitglossary` 的 pathspec 与 literal 两节），
+    /// 让任何文件名都按字面匹配自己。
     private func makePathspecData(from paths: [String]) -> Data {
         var data = Data()
 
         for path in paths {
-            data.append(path.data(using: .utf8, allowLossyConversion: false) ?? Data(path.utf8))
+            let pathspec = ":(literal)" + path
+            data.append(pathspec.data(using: .utf8, allowLossyConversion: false) ?? Data(pathspec.utf8))
             data.append(0)
         }
 

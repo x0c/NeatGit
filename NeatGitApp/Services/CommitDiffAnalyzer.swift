@@ -263,10 +263,8 @@ final class CommitDiffAnalyzer: @unchecked Sendable {
         }
 
         if item.isUntracked {
-            if let untrackedPatch = loadUntrackedPatch(for: item, in: repositoryPath),
-               let condensed = condensePatch(untrackedPatch, budget: budget) {
-                parts.append("[未暂存]\n\(condensed)")
-            } else if let excerpt = readWorkingTreeExcerpt(for: item, in: repositoryPath) {
+            // 新增文件没有可比对的基线，直接读工作区正文节选。
+            if let excerpt = readWorkingTreeExcerpt(for: item, in: repositoryPath) {
                 parts.append("[未暂存]\n新增文件内容节选：\n\(excerpt)")
             }
         } else if item.supportsWorkingTreeDiff,
@@ -285,14 +283,6 @@ final class CommitDiffAnalyzer: @unchecked Sendable {
         guard let patch = try? runGit(in: repositoryPath, arguments: arguments) else { return nil }
         let trimmed = patch.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private func loadUntrackedPatch(for item: RepositoryFileItem, in repositoryPath: String) -> String? {
-        let absolutePath = URL(fileURLWithPath: repositoryPath).appendingPathComponent(item.path).path
-        return loadPatch(
-            in: repositoryPath,
-            arguments: ["diff", "--no-index", "--no-color", "--unified=0", "--", "/dev/null", absolutePath]
-        )
     }
 
     private func condensePatch(_ patch: String, budget: PromptBudget) -> String? {

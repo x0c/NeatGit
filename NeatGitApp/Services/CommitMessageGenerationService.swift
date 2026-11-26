@@ -77,8 +77,7 @@ final class CommitMessageGenerationService: @unchecked Sendable {
                 ],
                 configuration: configuration,
                 maxTokens: 1024,
-                responseFormat: .jsonObject,
-                disableThinking: true
+                responseFormat: .jsonObject
             )
             Self.logger.info("LLM 响应成功，长度=\(result.content.count)，finish=\(result.finishReason ?? "nil")")
             await recordDebugAttempt(sessionID: sessionID, title: attemptTitle, systemPrompt: systemPrompt, userPrompt: userPrompt, rawResponse: result.content, errorMessage: nil)

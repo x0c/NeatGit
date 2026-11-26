@@ -13,7 +13,8 @@ struct RepositorySidebar: View {
     @Binding var expandedGroupID: RepositoryGroup.ID?
     let onToggleGroup: (RepositoryGroup.ID) -> Void
     let onToggleRepositoryStar: (GitRepository) -> Void
-    let onPrefetchRepository: (GitRepository) -> Void
+    /// 接收侧栏仓库行的进入 / 离开事件；由状态容器统一决定何时预取。
+    let onPrefetchRepository: (RepositoryHoverEvent) -> Void
 
     var body: some View {
         // 选择、键盘导航、折叠动画全部交给系统 List，
@@ -28,8 +29,8 @@ struct RepositorySidebar: View {
                             onToggleStar: {
                                 onToggleRepositoryStar(repository)
                             },
-                            onPrefetch: {
-                                onPrefetchRepository(repository)
+                            onHover: {
+                                onPrefetchRepository($0)
                             }
                         )
                         .tag(repository.id)
@@ -118,7 +119,7 @@ private struct RepositoryRow: View {
     let repository: GitRepository
     let isStarred: Bool
     let onToggleStar: () -> Void
-    let onPrefetch: () -> Void
+    let onHover: (RepositoryHoverEvent) -> Void
 
     @State private var isHovering = false
 
@@ -151,10 +152,8 @@ private struct RepositoryRow: View {
         }
         .onHover { isHovering in
             self.isHovering = isHovering
-            // 悬停即预热仓库状态，点击时数据已在缓存里，选中无需等待。
-            if isHovering {
-                onPrefetch()
-            }
+            // 进入与离开都原样上报：停留满一小段时间才预取，快速划过不再为每行各起 git 进程。
+            onHover(isHovering ? .entered(repository) : .exited(repository))
         }
         .help(repository.path)
         .contextMenu {

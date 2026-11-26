@@ -14,6 +14,8 @@ DerivedData/
 /.build-xcode/
 /Web/MonacoDiff/node_modules/
 /NeatGitApp/Resources/MonacoDiff/
+/Web/DiffWeb/node_modules/
+/NeatGitApp/Resources/DiffWeb/
 
 # 本地临时文件（不入公开仓库）
 AGENTS.md.tmp

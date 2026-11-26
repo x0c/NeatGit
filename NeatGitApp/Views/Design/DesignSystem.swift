@@ -16,18 +16,8 @@ enum Theme {
     enum Spacing {
         /// 2pt，同一行两行文本之间（文件名/路径），仅此一处允许小于 4pt 栅格。
         static let textStack: CGFloat = 2
-        /// 4pt，紧邻元素之间，例如图标与它的角标。
-        static let xxs: CGFloat = 4
         /// 6pt，同一行内图标与文字。
         static let xs: CGFloat = 6
-        /// 8pt，行内控件默认间距。
-        static let sm: CGFloat = 8
-        /// 12pt，分区内部的块间距。
-        static let md: CGFloat = 12
-        /// 16pt，面板级内边距。
-        static let lg: CGFloat = 16
-        /// 24pt，空状态等大留白。
-        static let xl: CGFloat = 24
     }
 
     /// 圆角。本产品唯一的常规曲率是 `standard` 8pt。
@@ -35,26 +25,10 @@ enum Theme {
     /// 嵌套必须同心：内圆角 = 外圆角 − 间距，不抄同一个数。
     /// 短控件（loading 胶囊等）直接用 `Capsule` 形状，由半高自然收圆，不写固定圆角数值。
     enum Radius {
-        /// 8pt，本产品唯一的常规曲率。新代码引用它，不引用 `medium`（保留 `medium` 仅为兼容）。
+        /// 8pt，本产品唯一的常规曲率。
         static let standard: CGFloat = 8
-        /// 6pt = standard 8 − textStack 2，同心派生的内层圆角。
-        static let small: CGFloat = 6
-        /// 8pt，同 `standard`，存量兼容别名。
-        static let medium: CGFloat = 8
-        /// 10pt，外层容器。内层按同心公式从它减间距得出，不直接复用 10。
-        static let large: CGFloat = 10
-        /// 4pt = standard 8 − xxs 4，同心派生，仅 `GitStatusBadge` 使用，不是第二种曲率。
+        /// 4pt = standard 8 − 间距 4，同心派生，仅 `GitStatusBadge` 使用，不是第二种曲率。
         static let badge: CGFloat = 4
-    }
-
-    /// 行高阶梯，保证列表节奏一致。
-    enum RowHeight {
-        /// 24pt，文件行这类高密度列表。
-        static let compact: CGFloat = 24
-        /// 28pt，仓库行。
-        static let regular: CGFloat = 28
-        /// 32pt，分组标题行。
-        static let header: CGFloat = 32
     }
 
     /// 语义色。全部基于 AppKit 系统色，深浅色模式自动适配。
@@ -64,21 +38,6 @@ enum Theme {
     /// 靠 `!`/`D` 角标与提示文案区分；如需颜色亦可分，须由产品裁定后再改本表。
     /// 新增/修改/未跟踪/星标色与相邻正文的区分度须在深浅色下实机验证（绿/青/黄在暗色选中行上易糊）。
     enum Palette {
-        /// 侧边栏背景，使用系统侧边栏材质对应的底色。
-        static let sidebarBackground = Color(nsColor: .controlBackgroundColor)
-        /// 主内容区背景。
-        static let contentBackground = Color(nsColor: .textBackgroundColor)
-        /// 面板顶部工具条背景，比内容区略深一档以压出层次。
-        static let barBackground = Color(nsColor: .windowBackgroundColor)
-        /// 分组头 / 次级容器的填充。
-        static let groupFill = Color(nsColor: .quaternaryLabelColor).opacity(0.5)
-        /// 更次一级的容器填充，用于子分组。
-        static let subgroupFill = Color(nsColor: .quaternaryLabelColor).opacity(0.28)
-        /// 通用描边。
-        static let border = Color(nsColor: .separatorColor)
-        /// 悬停态背景。
-        static let hoverFill = Color(nsColor: .quaternaryLabelColor).opacity(0.35)
-
         /// Git 新增，绿色。
         static let gitAdded = Color(nsColor: .systemGreen)
         /// Git 修改，橙色。
@@ -99,15 +58,9 @@ enum Theme {
 
     /// 字体阶梯。桌面端高密度列表统一用固定字号，避免动态字体把行高撑乱。
     ///
-    /// 代价是系统「大文字」不会放大这些行：桌面端可接受的取舍（行高见 `RowHeight`），
+    /// 代价是系统「大文字」不会放大这些行：桌面端可接受的取舍，
     /// VoiceOver 朗读与键盘导航不受影响。行内计数一律走 `count`（等宽），不散写 `.monospacedDigit()`。
     enum Font {
-        /// 面板标题。
-        static let panelTitle = SwiftUI.Font.system(size: 12.5, weight: .semibold)
-        /// 列表行主文本。
-        static let rowTitle = SwiftUI.Font.system(size: 12.5)
-        /// 列表行次要文本（路径等）。
-        static let rowSubtitle = SwiftUI.Font.system(size: 11)
         /// 分组标题与行内星标（11pt semibold）。
         static let groupTitle = SwiftUI.Font.system(size: 11, weight: .semibold)
         /// 状态角标文字。

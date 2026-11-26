@@ -153,7 +153,7 @@ final class GitRepositoryStatusLoader: @unchecked Sendable {
         let x = xy.first ?? "."
         let y = xy.dropFirst().first ?? "."
 
-        if x == "U" || y == "U" {
+        if RepositoryFileItem.isUnmergedStatus(xy) {
             return "冲突"
         }
 

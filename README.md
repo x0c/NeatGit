@@ -70,13 +70,13 @@ curl -fL https://github.com/x0c/NeatGit/releases/download/v0.1.1/NeatGit-0.1.1.d
 
 ### 6. 单文件 diff 预览
 
-- 右侧预览通过 macOS 26 原生 `WebView / WebPage` 集成 Monaco，保留代码高亮与变更标记。这是目前唯一保留的网页内容界面。
-- 目前支持单个 changed 文件的左右对照文本 diff。
+- 右侧预览是原生实现，直接用系统文本视图渲染，不内嵌网页或浏览器内核。
+- 目前支持单个 changed 文件的文本 diff，可在“并排 / 单栏”之间切换，带行号、增删底色和行内高亮。
 - 会根据文件状态自动提供可用模式：
   - `未暂存`：`Index -> Working Tree`
   - `已暂存`：`HEAD -> Index`
 - 对 untracked 文件可直接展示空内容到工作区文件的对照。
-- 已内置一批常见语言的 Monaco `language hint`，例如 Swift、TypeScript、JavaScript、JSON、Markdown、YAML、Shell、SQL 等。
+- 开启“只看变更”会折叠长段未变更内容，点击可展开。
 
 ### 7. 提交栏
 
@@ -96,10 +96,10 @@ curl -fL https://github.com/x0c/NeatGit/releases/download/v0.1.1/NeatGit-0.1.1.d
 
 下面这些能力在代码里已经有明确边界，README 也同步按现状说明：
 
-- 右侧 diff 目前只支持单文件预览，不支持多文件汇总视图。
-- 当前只支持文本 diff，不支持二进制文件预览。
+- 右侧 diff 目前只支持单文件预览（在全部变动列表里展开一个文件），不支持多文件汇总视图。
+- 当前只支持文本 diff，不支持二进制文件预览；暂不提供语法高亮。
 - 冲突文件的可视化 diff 还没有接入。
-- 超过约 `750 KB` 的文本文件暂不展示 diff。
+- 超过约 `5 MB` 的文本文件暂不展示 diff。
 - `skip-worktree` 和 `ignored` 文件当前先保留列表能力，右侧预览还未实现。
 - 仓库详情信息（分支、最近提交、远端信息、摘要）还没有做出来。
 
@@ -110,8 +110,6 @@ curl -fL https://github.com/x0c/NeatGit/releases/download/v0.1.1/NeatGit-0.1.1.d
 - SwiftUI
 - Observation
 - Swift Concurrency
-- WebKit
-- Monaco Editor
 - XcodeGen
 
 ## 代码结构
@@ -126,11 +124,9 @@ NeatGitApp/
   Views/
     Sidebar/                      # 左侧仓库列表
     RepositoryStatus/             # 文件状态面板与预览容器
-    Diff/                         # macOS 26 WebKit + Monaco
+    Diff/                         # 原生差异视图（系统文本视图，并排 / 单栏）
     Commit/                       # 底部提交栏
     Settings/                     # LLM 设置 + 更新开关
-  Resources/MonacoDiff/           # 打包后的 Monaco 前端资源
-Web/MonacoDiff/                   # Monaco diff 前端源码
 appcast.xml                       # Sparkle 更新清单（随仓库发布）
 scripts/publish-release.sh        # 签名 + 公证 + DMG + GitHub Release 发布器
 project.yml                       # XcodeGen 配置源
@@ -140,16 +136,15 @@ project.yml                       # XcodeGen 配置源
 
 如果只是在 Xcode 中打开工程，建议优先把 `project.yml` 视为真实配置源；新增或重组源码后，应先重新生成工程。
 
-### 1. 构建预览资源并生成工程
+### 1. 生成工程
 
-首次构建或修改预览网页后：
+首次检出后先生成工程文件（工程文件不入库）：
 
 ```bash
-(cd Web/MonacoDiff && npm ci && npm run build)
 xcodegen generate
 ```
 
-前端构建直接写入应用资源目录；资源文件名变化后需重新生成工程。日常只改 Swift 时可以直接构建。
+新增或重组源码后需要重新生成。差异预览是纯原生代码，没有额外的资源构建步骤。
 
 ### 2. 命令行构建
 

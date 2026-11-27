@@ -25,6 +25,9 @@ enum GitCommandRunner {
         arguments: [String],
         standardInputData: Data? = nil
     ) throws -> GitCommandResult {
+        let profileInterval = InteractionProfiler.begin("Git 命令")
+        defer { profileInterval.end("子命令：\(arguments.first ?? "未知")") }
+
         let process = Process()
         let combinedPipe = Pipe()
         let standardInputPipe = standardInputData.map { _ in Pipe() }

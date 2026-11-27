@@ -1,10 +1,21 @@
 import Observation
 
+/// 侧栏仓库行的悬停事件。
+///
+/// 侧栏只负责原样上报「进入 / 离开哪一行」；停留判定、在途数量上限与取消
+/// 都收在 `RepositoryStatusStore` 里统一处理，避免每碰一行就起一轮 git 进程。
+enum RepositoryHoverEvent {
+    case entered(GitRepository)
+    case exited(GitRepository)
+}
+
 @MainActor
 @Observable
 final class RepositoryStatusStore {
     /// 跨仓库快照缓存上限：覆盖用户近期来回切换的仓库，超出后淘汰最久未使用的。
     private static let maxCachedSnapshots = 10
+    /// 悬停停留多久才开始预取；鼠标快速划过不触发。
+    static let defaultHoverPrefetchDelay = Duration.milliseconds(200)
 
     private(set) var snapshot: RepositoryFileSnapshot?
     private(set) var isLoading = false
@@ -12,7 +23,9 @@ final class RepositoryStatusStore {
     private(set) var snapshotRevision = 0
 
     @ObservationIgnored
-    private let loader = GitRepositoryStatusLoader()
+    private let loadSnapshot: (GitRepository) async throws -> RepositoryFileSnapshot
+    @ObservationIgnored
+    private let hoverPrefetchDelay: Duration
     @ObservationIgnored
     private var currentRepository: GitRepository?
     @ObservationIgnored
@@ -22,9 +35,41 @@ final class RepositoryStatusStore {
     private var snapshotCache: [GitRepository.ID: RepositoryFileSnapshot] = [:]
     @ObservationIgnored
     private var snapshotCacheOrder: [GitRepository.ID] = []
-    /// 进行中的预取任务：选中仓库时可直接复用，避免同一仓库跑两遍 git status。
+    /// 当前悬停目标：最近进入且尚未离开的仓库行。
     @ObservationIgnored
-    private var prefetchTasks: [GitRepository.ID: Task<RepositoryFileSnapshot, Error>] = [:]
+    private var hoveredRepository: GitRepository?
+    /// 悬停停留计时；换行或离开时作废。
+    @ObservationIgnored
+    private var hoverDelayTask: Task<Void, Never>?
+    /// 唯一在途的预取任务：选中同仓库时直接复用，避免同一仓库跑两遍 git status。
+    @ObservationIgnored
+    private var inFlightPrefetch: InFlightPrefetch?
+    /// 在途期间新确认的悬停目标，只保留最新一个，等在途结束后再决定是否执行。
+    @ObservationIgnored
+    private var queuedPrefetch: GitRepository?
+
+    private struct InFlightPrefetch {
+        let repository: GitRepository
+        let task: Task<RepositoryFileSnapshot, Error>
+    }
+
+    init(
+        hoverPrefetchDelay: Duration = RepositoryStatusStore.defaultHoverPrefetchDelay,
+        loadSnapshot: @escaping (GitRepository) async throws -> RepositoryFileSnapshot = GitRepositoryStatusLoader().loadSnapshot(for:)
+    ) {
+        self.hoverPrefetchDelay = hoverPrefetchDelay
+        self.loadSnapshot = loadSnapshot
+    }
+
+    /// 是否有预取在途（测试与排查时的观察口径，不属于界面状态）。
+    var isPrefetchInFlight: Bool {
+        inFlightPrefetch != nil
+    }
+
+    /// 悬停停留是否仍在计时。
+    var isWaitingForHoverDelay: Bool {
+        hoverDelayTask != nil
+    }
 
     func load(for repository: GitRepository?) {
         loadTask?.cancel()
@@ -47,7 +92,9 @@ final class RepositoryStatusStore {
 
             loadTask = Task {
                 do {
+                    let interval = InteractionProfiler.begin("仓库状态.缓存命中后刷新")
                     let freshSnapshot = try await fetchSnapshot(for: repository)
+                    interval.end()
                     guard shouldApplyResult(for: repository) else { return }
                     applySnapshot(freshSnapshot)
                 } catch {
@@ -67,7 +114,9 @@ final class RepositoryStatusStore {
 
         loadTask = Task {
             do {
+                let interval = InteractionProfiler.begin("仓库状态.完整读取")
                 let freshSnapshot = try await fetchSnapshot(for: repository)
+                interval.end()
                 guard shouldApplyResult(for: repository) else { return }
                 applySnapshot(freshSnapshot)
             } catch {
@@ -78,45 +127,107 @@ final class RepositoryStatusStore {
     }
 
     func refreshCurrentRepository() {
-        load(for: currentRepository)
+        InteractionProfiler.measure("刷新文件.点击处理") {
+            load(for: currentRepository)
+        }
     }
 
-    /// 预取仓库状态：只填充缓存、不动界面状态。
-    /// 侧栏悬停时调用，用户点击前数据已经就绪，首次选中也能零等待。
-    func prefetch(for repository: GitRepository) {
+    /// 处理侧栏仓库行的悬停事件，按需预取仓库状态。
+    ///
+    /// 预取只填充缓存、不动界面状态；用户点击前数据已经就绪，首次选中也能零等待。
+    /// 约束：停留满 `hoverPrefetchDelay` 才开始；同时最多一个在途；在途期间只记住
+    /// 最新的悬停目标；离开全部行时尚未开始的一律作废。
+    func prefetch(for event: RepositoryHoverEvent) {
+        switch event {
+        case .entered(let repository):
+            setHoveredRepository(repository)
+        case .exited(let repository):
+            // 行间移动时上一行的离开回调可能晚于新行的进入，只认「离开的是当前目标」。
+            guard hoveredRepository?.id == repository.id else { return }
+            setHoveredRepository(nil)
+        }
+    }
+
+    private func setHoveredRepository(_ repository: GitRepository?) {
+        guard repository?.id != hoveredRepository?.id else { return }
+        hoveredRepository = repository
+        hoverDelayTask?.cancel()
+        hoverDelayTask = nil
+        // 排队的目标只跟随当前悬停行；换了目标就等新目标自己的停留计时。
+        queuedPrefetch = nil
+
+        // 无需预取的行（已有缓存或正是当前仓库）不计时。
+        guard let repository, needsPrefetch(repository) else { return }
+
+        hoverDelayTask = Task { [weak self, hoverPrefetchDelay] in
+            try? await Task.sleep(for: hoverPrefetchDelay)
+            guard !Task.isCancelled, let self else { return }
+            self.hoverDelayTask = nil
+            self.requestPrefetch(for: repository)
+        }
+    }
+
+    /// 停留时间已到：没有在途预取就开始，否则只记下这一个。
+    private func requestPrefetch(for repository: GitRepository) {
         guard
-            snapshotCache[repository.id] == nil,
-            prefetchTasks[repository.id] == nil,
-            currentRepository?.id != repository.id
+            hoveredRepository?.id == repository.id,
+            needsPrefetch(repository)
         else { return }
 
-        let task = Task<RepositoryFileSnapshot, Error> { [loader] in
-            try await loader.loadSnapshot(for: repository)
+        guard let inFlightPrefetch else {
+            startPrefetch(for: repository)
+            return
         }
-        prefetchTasks[repository.id] = task
+
+        // 同一仓库已在途：等它完成即可，不必排队。
+        if inFlightPrefetch.repository.id != repository.id {
+            queuedPrefetch = repository
+        }
+    }
+
+    private func needsPrefetch(_ repository: GitRepository) -> Bool {
+        snapshotCache[repository.id] == nil && currentRepository?.id != repository.id
+    }
+
+    private func startPrefetch(for repository: GitRepository) {
+        let task = Task<RepositoryFileSnapshot, Error> { [loadSnapshot] in
+            let interval = InteractionProfiler.begin("仓库状态.悬停预取")
+            defer { interval.end() }
+            return try await loadSnapshot(repository)
+        }
+        inFlightPrefetch = InFlightPrefetch(repository: repository, task: task)
 
         Task { [weak self] in
             let result = await task.result
 
             guard let self else { return }
-            prefetchTasks.removeValue(forKey: repository.id)
-
-            // 用户尚未选中该仓库时只写缓存；若已选中，load 路径会复用同一个任务并自行落盘。
-            if case let .success(snapshot) = result, currentRepository?.id != repository.id {
-                storeSnapshotInCache(snapshot, for: repository)
-            }
+            self.finishPrefetch(for: repository, result: result)
         }
+    }
+
+    private func finishPrefetch(for repository: GitRepository, result: Result<RepositoryFileSnapshot, Error>) {
+        inFlightPrefetch = nil
+
+        // 用户尚未选中该仓库时只写缓存；若已选中，load 路径会复用同一个任务并自行落盘。
+        if case let .success(snapshot) = result, currentRepository?.id != repository.id {
+            storeSnapshotInCache(snapshot, for: repository)
+        }
+
+        // 在途结束后再处理排队的最新目标：期间已离开或已不需要的不执行。
+        guard let queuedRepository = queuedPrefetch else { return }
+        queuedPrefetch = nil
+        requestPrefetch(for: queuedRepository)
     }
 
     private func fetchSnapshot(for repository: GitRepository) async throws -> RepositoryFileSnapshot {
         // 复用进行中的预取任务，避免选中仓库时重复执行 git status。
-        if let prefetchTask = prefetchTasks[repository.id] {
-            let snapshot = try await prefetchTask.value
+        if let inFlightPrefetch, inFlightPrefetch.repository.id == repository.id {
+            let snapshot = try await inFlightPrefetch.task.value
             storeSnapshotInCache(snapshot, for: repository)
             return snapshot
         }
 
-        let snapshot = try await loader.loadSnapshot(for: repository)
+        let snapshot = try await loadSnapshot(repository)
         storeSnapshotInCache(snapshot, for: repository)
         return snapshot
     }
@@ -141,15 +252,17 @@ final class RepositoryStatusStore {
     }
 
     private func applySnapshot(_ snapshot: RepositoryFileSnapshot) {
-        let isUnchanged = self.snapshot == snapshot
+        InteractionProfiler.measure("仓库状态.主线程应用", detail: "文件数：\(snapshot.allFiles.count)") {
+            let isUnchanged = self.snapshot == snapshot
 
-        self.snapshot = snapshot
-        isLoading = false
-        errorMessage = nil
+            self.snapshot = snapshot
+            isLoading = false
+            errorMessage = nil
 
-        // 数据没有变化时保持版本号不变：右侧 diff 缓存与选中态都不受影响。
-        if !isUnchanged {
-            snapshotRevision += 1
+            // 数据没有变化时保持版本号不变：右侧 diff 缓存与选中态都不受影响。
+            if !isUnchanged {
+                snapshotRevision += 1
+            }
         }
     }
 

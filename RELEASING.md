@@ -11,8 +11,9 @@ modifies a public GitHub Release.
 
 ## Durable release requirements
 
-R1 — Snapshot before build. The script builds the Monaco frontend, runs
-`xcodegen generate`, then commits the generated project together with the
+R1 — Snapshot before build. The script runs `xcodegen generate` (the
+diff preview is native Swift; there is no web frontend or Node.js build
+step), then commits the generated project together with the
 whole workspace (`git add -A`, including other agents' unfinished source)
 *before* `xcodebuild` archives. Archive, tag, install image, and GitHub
 Release all derive from that commit. It records the built `SOURCE_COMMIT`
@@ -107,8 +108,8 @@ for other long local jobs.
    the version, clean merge/rebase state, single-instance lock (same
    worktree never runs two publishes; the lock's parent dir is created
    only on a real run, never during `--dry-run`).
-2. Build Monaco frontend (`npm ci && npm run build`), then `xcodegen
-   generate`, then commit-first snapshot (`git add -A` +
+2. `xcodegen generate` (no frontend build: the diff preview is native
+   Swift with no bundled web resources), then commit-first snapshot (`git add -A` +
    commit when dirty), record `SOURCE_COMMIT`, verify the version tag
    (existing tag must equal `SOURCE_COMMIT`).
 3. Universal Release archive + Developer ID export, retaining complete

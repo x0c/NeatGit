@@ -19,11 +19,15 @@ final class GitRepositoryStatusLoader: @unchecked Sendable {
             )
         }.value
 
-        return try makeSnapshot(
-            statusData: try await statusData,
-            skippedData: try await skippedData,
-            repository: repository
-        )
+        let receivedStatusData = try await statusData
+        let receivedSkippedData = try await skippedData
+        return try InteractionProfiler.measure("仓库状态.解析与智能分组") {
+            try makeSnapshot(
+                statusData: receivedStatusData,
+                skippedData: receivedSkippedData,
+                repository: repository
+            )
+        }
     }
 
     private func makeSnapshot(
@@ -153,7 +157,7 @@ final class GitRepositoryStatusLoader: @unchecked Sendable {
         let x = xy.first ?? "."
         let y = xy.dropFirst().first ?? "."
 
-        if x == "U" || y == "U" {
+        if RepositoryFileItem.isUnmergedStatus(xy) {
             return "冲突"
         }
 

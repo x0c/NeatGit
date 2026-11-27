@@ -41,8 +41,6 @@ final class LLMSettingsStore {
         }
     }
 
-    private(set) var latestPersistenceError: String?
-
     @ObservationIgnored
     private let defaults: UserDefaults
 
@@ -104,10 +102,6 @@ final class LLMSettingsStore {
             apiKey: trimmedAPIKey,
             model: trimmedModel
         )
-    }
-
-    func clearPersistenceError() {
-        latestPersistenceError = nil
     }
 
     func resetSystemPrompt() {

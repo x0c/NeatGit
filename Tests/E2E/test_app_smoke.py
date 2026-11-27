@@ -153,6 +153,31 @@ def test_single_file_diff_changes_pixels(app, driver, vision):
     assert diff_pixels > 0.01, f"preview pixels barely changed: {diff_pixels:.4f}"
 
 
+def test_changed_files_summary_keeps_only_focused_file_expanded(app, driver):
+    """右侧汇总全部变动文件，但只展开当前关注的一个文件。"""
+
+    _select_repository(driver)
+    # 前一条用例可能保留文件选择；先切到空仓库再切回，验证真正的全折叠初态。
+    _select_repository(driver, BEHIND_ROW)
+    _select_repository(driver)
+    driver.ax().find(identifier="changed-file-diff-list", timeout=8)
+
+    for label in (README_LABEL, UNTRACKED_LABEL, BINARY_LABEL):
+        identifier = f"diff-file-changed:{label}"
+        driver.ax().find(identifier=identifier, timeout=5)
+        driver.assert_value(identifier, equals="已折叠", timeout=5)
+
+    _press_file(driver, README_LABEL)
+    driver.assert_value(f"diff-file-changed:{README_LABEL}", equals="已展开", timeout=8)
+    driver.assert_value(f"diff-file-changed:{UNTRACKED_LABEL}", equals="已折叠", timeout=5)
+    driver.assert_value(f"diff-file-changed:{BINARY_LABEL}", equals="已折叠", timeout=5)
+
+    driver.press(identifier=f"diff-file-changed:{UNTRACKED_LABEL}")
+    driver.assert_value(f"diff-file-changed:{UNTRACKED_LABEL}", equals="已展开", timeout=8)
+    driver.assert_value(f"diff-file-changed:{README_LABEL}", equals="已折叠", timeout=5)
+    driver.assert_value(f"diff-file-changed:{BINARY_LABEL}", equals="已折叠", timeout=5)
+
+
 def test_second_repository_switch_updates_context(app, driver):
     """切到另一个临时仓库：标题、变更数量、文件列表都跟着换。"""
 

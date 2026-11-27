@@ -74,32 +74,9 @@ struct LLMSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .toggleStyle(.switch)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentSize.height
-        } action: { _, height in
-            if height.isFinite, height > 0 {
-                contentHeight = ceil(height)
-            }
-        }
-        .scrollDisabled(true)
-        .frame(width: 480, height: contentHeight)
-        .fixedSize(horizontal: false, vertical: true)
-        .onExitCommand { NSApp.keyWindow?.performClose(nil) }
         .sheet(isPresented: $isEditingPrompt) {
             SystemPromptEditor(settingsStore: settingsStore)
         }
-        .alert(
-            "保存失败",
-            isPresented: Binding(
-                get: { settingsStore.latestPersistenceError != nil },
-                set: { if !$0 { settingsStore.clearPersistenceError() } }
-            ),
-            actions: {
-                Button("知道了", role: .cancel) { settingsStore.clearPersistenceError() }
-            },
-            message: { Text(settingsStore.latestPersistenceError ?? "") }
-        )
     }
 }
 

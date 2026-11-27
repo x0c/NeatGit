@@ -257,11 +257,8 @@ if ! mkdir "${lock_dir}" 2>/dev/null; then
 fi
 trap 'rm -rf "${lock_dir}"' EXIT
 
-log_step "构建 Monaco 前端并生成工程"
-if [[ -f Web/MonacoDiff/package.json ]]; then
-  (cd Web/MonacoDiff && npm ci && npm run build) >/dev/null \
-    || die "Monaco 前端构建失败"
-fi
+# 差异预览是原生实现，没有网页前端，不需要任何前端构建步骤。
+log_step "生成 Xcode 工程"
 xcodegen generate >/dev/null
 # 提交优先：归档、打标签、落盘全部来自这次提交。工作区改动（含他人未提交
 # 源码）一并纳入提交，绝不丢弃、贮藏（stash）、重置或隔离。

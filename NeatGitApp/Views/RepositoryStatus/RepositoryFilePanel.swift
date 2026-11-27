@@ -51,12 +51,25 @@ struct RepositoryFilePanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaBar(edge: .top, spacing: 0) {
-            HStack {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Label("文件更改", systemImage: "square.stack.3d.up")
+                        .font(.headline)
+                        .symbolRenderingMode(.hierarchical)
+
+                    Spacer(minLength: Theme.Spacing.sm)
+
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("正在读取文件状态")
+                    }
+                }
+
                 if let snapshot {
                     if let errorMessage {
                         // 刷新失败降级为顶部提示（SWR）：快照内容保留可操作，
-                        // 这里只承担失败可见性，所以图标用警示色、正文用主要层级，
-                        // 避免整条 secondary 让用户把失败当成普通摘要忽略。
+                        // 警示图标与主要正文避免失败被误认为普通摘要。
                         Label {
                             Text("刷新失败：\(errorMessage)")
                                 .font(.caption)
@@ -69,22 +82,30 @@ struct RepositoryFilePanel: View {
                         }
                         .help(errorMessage)
                     } else {
-                        Text(summaryText(for: snapshot))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: Theme.Spacing.xs) {
+                            RepositorySummaryBadge(
+                                count: snapshot.changedFiles.count,
+                                title: "更改",
+                                tint: Theme.Palette.accent
+                            )
+                            RepositorySummaryBadge(
+                                count: snapshot.skippedFiles.count,
+                                title: "不提交",
+                                tint: .orange
+                            )
+                            RepositorySummaryBadge(
+                                count: snapshot.ignoredFiles.count,
+                                title: "忽略",
+                                tint: .secondary
+                            )
+                            Spacer(minLength: 0)
+                        }
                     }
-                } else {
-                    Text("文件更改")
-                        .font(.headline)
-                }
-                Spacer(minLength: 8)
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
         }
     }
 
@@ -92,19 +113,23 @@ struct RepositoryFilePanel: View {
         List(selection: $selectedFileIDs) {
             ForEach(RepositoryFileSection.allCases) { section in
                 DisclosureGroup(isExpanded: expansionBinding(for: section)) {
-                    sectionContents(snapshot.files(in: section), repositoryPath: snapshot.repositoryPath, section: section)
+                    sectionContents(snapshot, section: section)
                 } label: {
                     Label {
                         HStack {
                             Text(section.title)
-                            Spacer(minLength: 4)
+                            Spacer(minLength: Theme.Spacing.xxs)
                             Text(snapshot.files(in: section).count, format: .number)
-                                .monospacedDigit()
+                                .font(Theme.Font.count)
                                 .foregroundStyle(.secondary)
+                                .padding(.horizontal, Theme.Spacing.xs)
+                                .padding(.vertical, Theme.Spacing.textStack)
+                                .background(.quaternary, in: Capsule())
                         }
                         .font(.callout.weight(.semibold))
                     } icon: {
                         Image(systemName: section.iconName)
+                            .foregroundStyle(tint(for: section))
                     }
                 }
                 .selectionDisabled()
@@ -117,16 +142,17 @@ struct RepositoryFilePanel: View {
 
     @ViewBuilder
     private func sectionContents(
-        _ items: [RepositoryFileItem],
-        repositoryPath: String,
+        _ snapshot: RepositoryFileSnapshot,
         section: RepositoryFileSection
     ) -> some View {
+        let items = snapshot.files(in: section)
+        let repositoryPath = snapshot.repositoryPath
         if items.isEmpty {
             Text(section.emptyDescription)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .selectionDisabled()
-        } else if let subgroups = RepositoryFileSubgroup.makeSmartGroups(from: items) {
+        } else if let subgroups = snapshot.smartGroups(in: section) {
             ForEach(subgroups) { subgroup in
                 Section {
                     fileRows(subgroup.items, repositoryPath: repositoryPath, subgroupPath: subgroup.directoryPath)
@@ -173,15 +199,44 @@ struct RepositoryFilePanel: View {
 
                 // 与 Theme.disclosureAnimation 共用同一 token，
                 // 避免侧栏/中栏各自手写 duration 导致节奏不一致。
-                withAnimation(Theme.disclosureAnimation) {
-                    expandedSections = isExpanded ? [section] : []
+                InteractionProfiler.measure("文件分组.展开折叠") {
+                    withAnimation(Theme.disclosureAnimation) {
+                        expandedSections = isExpanded ? [section] : []
+                    }
                 }
             }
         )
     }
 
-    private func summaryText(for snapshot: RepositoryFileSnapshot) -> String {
-        "\(snapshot.changedFiles.count) 个更改 · \(snapshot.skippedFiles.count) 个不提交 · \(snapshot.ignoredFiles.count) 个忽略"
+    private func tint(for section: RepositoryFileSection) -> some ShapeStyle {
+        switch section {
+        case .changed:
+            return Theme.Palette.accent
+        case .skipped:
+            return Color.orange
+        case .ignored:
+            return Color.secondary
+        }
+    }
+}
+
+/// 顶栏摘要标签：数字、文字和语义色共同表达状态，不依赖颜色单独区分。
+private struct RepositorySummaryBadge: View {
+    let count: Int
+    let title: String
+    let tint: Color
+
+    private var resolvedTint: Color {
+        count == 0 ? .secondary : tint
+    }
+
+    var body: some View {
+        Text("\(count) 个\(title)")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(resolvedTint)
+            .padding(.horizontal, Theme.Spacing.xs)
+            .padding(.vertical, Theme.Spacing.xxs)
+            .background(resolvedTint.opacity(0.09), in: Capsule())
     }
 }
 
@@ -198,6 +253,7 @@ private struct RepositoryFileInteractiveRow: View {
         Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
+                    .font(.system(size: 13, weight: .medium))
                     .strikethrough(item.isDeleted)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -213,6 +269,7 @@ private struct RepositoryFileInteractiveRow: View {
         } icon: {
             GitStatusBadge(style: item.statusStyle)
         }
+        .padding(.vertical, Theme.Spacing.textStack)
         .help(item.relativePath)
         .accessibilityIdentifier("file-\(item.id)")
         .accessibilityLabel("\(item.displayName)，\(item.statusStyle.label)")

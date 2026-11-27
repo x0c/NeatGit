@@ -96,12 +96,16 @@ final class WorkspaceSelectionStore {
     }
 
     func selectedFiles(in snapshot: RepositoryFileSnapshot?) -> [RepositoryFileItem] {
-        guard let snapshot else { return [] }
+        guard let snapshot, !selectedFileIDs.isEmpty else { return [] }
+        // 高频路径是单文件预览，直接查索引；多选仍保持文件列表原有顺序。
+        if selectedFileIDs.count == 1, let selectedID = selectedFileIDs.first {
+            return snapshot.file(withID: selectedID).map { [$0] } ?? []
+        }
         return snapshot.allFiles.filter { selectedFileIDs.contains($0.id) }
     }
 
     func hoveredFile(in snapshot: RepositoryFileSnapshot?) -> RepositoryFileItem? {
         guard let snapshot, let hoveredFileID else { return nil }
-        return snapshot.allFiles.first { $0.id == hoveredFileID }
+        return snapshot.file(withID: hoveredFileID)
     }
 }

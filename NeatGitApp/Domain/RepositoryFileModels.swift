@@ -48,22 +48,53 @@ struct RepositoryFileItem: Identifiable, Hashable, Sendable {
     let state: RepositoryFileState
     let gitStatusCode: String?
     let previousPath: String?
+    /// 高频展示与查找字段在后台创建状态时只计算一次。
+    let id: String
+    let displayName: String
+    let relativePath: String
+    let parentPath: String?
+    let parentPathComponents: [String]
 
-    var id: String {
-        "\(section.rawValue):\(path)"
+    init(
+        section: RepositoryFileSection,
+        path: String,
+        kind: RepositoryFileKind,
+        state: RepositoryFileState,
+        gitStatusCode: String?,
+        previousPath: String?
+    ) {
+        self.section = section
+        self.path = path
+        self.kind = kind
+        self.state = state
+        self.gitStatusCode = gitStatusCode
+        self.previousPath = previousPath
+        id = "\(section.rawValue):\(path)"
+
+        let normalizedPath = path.hasSuffix("/") ? String(path.dropLast()) : path
+        relativePath = normalizedPath
+        displayName = (normalizedPath as NSString).lastPathComponent
+        let parent = (normalizedPath as NSString).deletingLastPathComponent
+        parentPath = parent.isEmpty || parent == "." ? nil : parent
+        parentPathComponents = parentPath?.split(separator: "/").map(String.init) ?? []
     }
 
-    var displayName: String {
-        (normalizedPath as NSString).lastPathComponent
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.section == rhs.section
+            && lhs.path == rhs.path
+            && lhs.kind == rhs.kind
+            && lhs.state == rhs.state
+            && lhs.gitStatusCode == rhs.gitStatusCode
+            && lhs.previousPath == rhs.previousPath
     }
 
-    var relativePath: String {
-        normalizedPath
-    }
-
-    var parentPath: String? {
-        let parentPath = (normalizedPath as NSString).deletingLastPathComponent
-        return parentPath.isEmpty || parentPath == "." ? nil : parentPath
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(section)
+        hasher.combine(path)
+        hasher.combine(kind)
+        hasher.combine(state)
+        hasher.combine(gitStatusCode)
+        hasher.combine(previousPath)
     }
 
     var statusSummary: String? {
@@ -87,8 +118,19 @@ struct RepositoryFileItem: Identifiable, Hashable, Sendable {
         return gitStatusCode.dropFirst().first
     }
 
+    /// porcelain v2 / 短格式里全部七种「未合并状态」的状态码，与 `man git-status` 的对照表一致。
+    ///
+    /// 其中 `AA`（双方新增）与 `DD`（双方删除）不含字母 U，只认 U 会把它们漏成普通新增 / 删除。
+    static let unmergedStatusCodes: Set<String> = ["DD", "AU", "UD", "UA", "DU", "AA", "UU"]
+
+    /// 给定的两字符状态码是否表示未合并（冲突）。状态加载器与文件模型共用这一份判断。
+    static func isUnmergedStatus(_ statusCode: String) -> Bool {
+        unmergedStatusCodes.contains(statusCode)
+    }
+
     var hasConflict: Bool {
-        [indexStatusCode, workTreeStatusCode].contains("U")
+        guard let gitStatusCode else { return false }
+        return Self.isUnmergedStatus(gitStatusCode)
     }
 
     var isCheckableForCommit: Bool {
@@ -106,7 +148,7 @@ struct RepositoryFileItem: Identifiable, Hashable, Sendable {
     var isStaged: Bool {
         guard section == .changed else { return false }
         guard let indexStatusCode else { return false }
-        return indexStatusCode != "." && indexStatusCode != "?"
+        return indexStatusCode != "." && indexStatusCode != "?" && indexStatusCode != " "
     }
 
     var isTracked: Bool {
@@ -183,14 +225,6 @@ struct RepositoryFileItem: Identifiable, Hashable, Sendable {
             currentComponents.append(component)
             return RepositoryIgnoreDirectoryOption(relativePath: currentComponents.joined(separator: "/"))
         }
-    }
-
-    private var normalizedPath: String {
-        path.hasSuffix("/") ? String(path.dropLast()) : path
-    }
-
-    var parentPathComponents: [String] {
-        parentPath?.split(separator: "/").map(String.init) ?? []
     }
 
     func subgroupPath(depth: Int) -> String {
@@ -467,9 +501,45 @@ struct RepositoryFileSnapshot: Sendable, Equatable {
     let changedFiles: [RepositoryFileItem]
     let skippedFiles: [RepositoryFileItem]
     let ignoredFiles: [RepositoryFileItem]
+    /// 以下派生数据在后台构建快照时只算一次，供每次界面刷新、文件选择与提交摘要复用。
+    let allFiles: [RepositoryFileItem]
+    let committableCount: Int
+    let excludedFromCommitCount: Int
+    private let filesByID: [RepositoryFileItem.ID: RepositoryFileItem]
+    private let smartGroups: [RepositoryFileSection: [RepositoryFileSubgroup]]
 
-    var allFiles: [RepositoryFileItem] {
-        changedFiles + skippedFiles + ignoredFiles
+    init(
+        repositoryPath: String,
+        changedFiles: [RepositoryFileItem],
+        skippedFiles: [RepositoryFileItem],
+        ignoredFiles: [RepositoryFileItem]
+    ) {
+        self.repositoryPath = repositoryPath
+        self.changedFiles = changedFiles
+        self.skippedFiles = skippedFiles
+        self.ignoredFiles = ignoredFiles
+        allFiles = changedFiles + skippedFiles + ignoredFiles
+        committableCount = changedFiles.reduce(into: 0) { count, item in
+            if item.isCommittableByDefault { count += 1 }
+        }
+        excludedFromCommitCount = changedFiles.reduce(into: 0) { count, item in
+            if CommitExclusion.shouldExcludeFromDefaultCommit(item) { count += 1 }
+        }
+        filesByID = Dictionary(allFiles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        var groups: [RepositoryFileSection: [RepositoryFileSubgroup]] = [:]
+        for section in RepositoryFileSection.allCases {
+            let items: [RepositoryFileItem]
+            switch section {
+            case .changed: items = changedFiles
+            case .skipped: items = skippedFiles
+            case .ignored: items = ignoredFiles
+            }
+            if let sectionGroups = RepositoryFileSubgroup.makeSmartGroups(from: items) {
+                groups[section] = sectionGroups
+            }
+        }
+        smartGroups = groups
     }
 
     var isEmpty: Bool {
@@ -485,5 +555,21 @@ struct RepositoryFileSnapshot: Sendable, Equatable {
         case .ignored:
             return ignoredFiles
         }
+    }
+
+    func file(withID id: RepositoryFileItem.ID) -> RepositoryFileItem? {
+        filesByID[id]
+    }
+
+    func smartGroups(in section: RepositoryFileSection) -> [RepositoryFileSubgroup]? {
+        smartGroups[section]
+    }
+
+    /// 派生索引与分组完全由三个文件数组决定，不参与重复比较，避免刷新时做两份全量比较。
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.repositoryPath == rhs.repositoryPath
+            && lhs.changedFiles == rhs.changedFiles
+            && lhs.skippedFiles == rhs.skippedFiles
+            && lhs.ignoredFiles == rhs.ignoredFiles
     }
 }

@@ -19,13 +19,27 @@ struct CommitComposerBar: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            HStack(spacing: Theme.Spacing.sm) {
+                Label("提交说明", systemImage: "text.bubble")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 0)
+
+                if isGeneratingMessage || isRunningCommitAction {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(isGeneratingMessage ? "正在生成提交说明" : "正在提交")
+                }
+            }
+
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $commitMessage)
                     .textEditorStyle(.plain)
                     .autocorrectionDisabled()
                     .font(.body)
-                    .padding(8)
+                    .padding(Theme.Spacing.xs)
                     .disabled(repository == nil || isRunningCommitAction || isGeneratingMessage)
                     .accessibilityLabel("提交说明")
                     .accessibilityIdentifier("commit-message-editor")
@@ -34,21 +48,26 @@ struct CommitComposerBar: View {
                     Text(commitPlaceholder)
                         .font(.body)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 13)
-                        .padding(.top, 8)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.top, Theme.Spacing.sm)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
             }
-            .frame(minHeight: 64, idealHeight: 80, maxHeight: 120)
-            .background(.background)
+            .frame(height: 72)
+            .background(.background, in: RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous)
+                    .stroke(.quaternary, lineWidth: 1)
+            }
 
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Spacing.sm) {
                 Button(action: onOpenDebugWindow) {
                     Label("AI 调试", systemImage: "ladybug")
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
                 .help("打开 AI 提交调试窗口（排查生成结果用，日常提交不需要）")
                 .accessibilityIdentifier("open-ai-debug")
 
@@ -59,12 +78,6 @@ struct CommitComposerBar: View {
                 .disabled(repository == nil || isRunningCommitAction || isGeneratingMessage)
                 .help("AI 生成提交说明")
                 .accessibilityIdentifier("generate-commit-message")
-
-                if isGeneratingMessage || isRunningCommitAction {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel(isGeneratingMessage ? "正在生成提交说明" : "正在提交")
-                }
 
                 Spacer(minLength: 0)
 
@@ -87,9 +100,17 @@ struct CommitComposerBar: View {
                 .lineLimit(2)
                 .accessibilityIdentifier("commit-status-message")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.background)
+        .padding(Theme.Spacing.md)
+        .background(
+            Theme.Palette.panelBackground,
+            in: RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous)
+                .stroke(.quaternary, lineWidth: 1)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
     }
 
     private var commitPlaceholder: String {

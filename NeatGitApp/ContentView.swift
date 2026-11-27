@@ -58,18 +58,15 @@ struct ContentView: View {
             .onChange(of: repositoryStore.repositories) { _, repositories in
                 selection.reconcile(with: repositories, groups: repositoryGroups)
             }
-            .onChange(of: statusStore.snapshot?.allFiles.map(\.id) ?? []) { _, fileIDs in
-                selection.reconcileFiles(with: fileIDs)
+            .onChange(of: statusStore.snapshotRevision) {
+                selection.reconcileFiles(with: statusStore.snapshot?.allFiles.map(\.id) ?? [])
             }
     }
 
     // MARK: - 派生状态
 
     private var repositoryGroups: [RepositoryGroup] {
-        RepositoryGroup.makeGroups(
-            from: repositoryStore.repositories,
-            starredRepositoryPaths: repositoryStore.starredRepositoryPaths
-        )
+        repositoryStore.groups
     }
 
     private var selectedRepository: GitRepository? {
@@ -89,8 +86,15 @@ struct ContentView: View {
             RepositoryPreviewPane(
                 repository: selectedRepository,
                 selectedFiles: selection.selectedFiles(in: statusStore.snapshot),
-                hoveredFile: selection.hoveredFile(in: statusStore.snapshot),
-                cacheRevision: statusStore.snapshotRevision
+                changedFiles: statusStore.snapshot?.changedFiles ?? [],
+                selection: selection,
+                snapshot: statusStore.snapshot,
+                cacheRevision: statusStore.snapshotRevision,
+                onFocusFile: { item in
+                    InteractionProfiler.measure("展开文件差异.点击处理") {
+                        selection.selectFile(item)
+                    }
+                }
             )
             .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -136,12 +140,18 @@ struct ContentView: View {
             starredRepositoryPaths: repositoryStore.starredRepositoryPaths,
             selectionPath: Binding(
                 get: { selection.selectedRepositoryID },
-                set: { selection.selectRepository($0, in: repositoryStore.repositories) }
+                set: { repositoryID in
+                    InteractionProfiler.measure("选择仓库.点击处理") {
+                        selection.selectRepository(repositoryID, in: repositoryStore.repositories)
+                    }
+                }
             ),
             expandedGroupID: $selection.expandedGroupID,
             onToggleGroup: { groupID in
-                withAnimation(Theme.disclosureAnimation) {
-                    selection.toggleGroup(groupID)
+                InteractionProfiler.measure("项目分组.展开折叠") {
+                    withAnimation(Theme.disclosureAnimation) {
+                        selection.toggleGroup(groupID)
+                    }
                 }
             },
             onToggleRepositoryStar: repositoryStore.toggleStar(for:),
@@ -155,7 +165,14 @@ struct ContentView: View {
             snapshot: statusStore.snapshot,
             isLoading: statusStore.isLoading,
             errorMessage: statusStore.errorMessage,
-            selectedFileIDs: $selection.selectedFileIDs,
+            selectedFileIDs: Binding(
+                get: { selection.selectedFileIDs },
+                set: { fileIDs in
+                    InteractionProfiler.measure("选择文件.点击处理", detail: "选中数：\(fileIDs.count)") {
+                        selection.selectedFileIDs = fileIDs
+                    }
+                }
+            ),
             onRefresh: statusStore.refreshCurrentRepository,
             onHoverFile: selection.updateHover(_:isHovering:),
             onIgnore: handleIgnore(_:for:),
@@ -197,16 +214,20 @@ struct ContentView: View {
     // MARK: - 意图转发
 
     private func openCommitDebugWindow() {
-        openWindow(id: AICommitDebugWindowView.windowID)
+        InteractionProfiler.measure("打开 AI 调试.点击处理") {
+            openWindow(id: AICommitDebugWindowView.windowID)
+        }
     }
 
     private func runCommit(_ action: GitCommitAction) {
-        commitStore.commit(
-            action,
-            repository: selectedRepository,
-            snapshot: statusStore.snapshot,
-            onFinish: statusStore.refreshCurrentRepository
-        )
+        InteractionProfiler.measure("提交推送.点击处理") {
+            commitStore.commit(
+                action,
+                repository: selectedRepository,
+                snapshot: statusStore.snapshot,
+                onFinish: statusStore.refreshCurrentRepository
+            )
+        }
     }
 
     private func handleIgnore(_ target: GitIgnoreRuleTarget, for item: RepositoryFileItem) {
@@ -222,8 +243,10 @@ struct ContentView: View {
     ) {
         guard let repository = selectedRepository else { return }
 
-        selection.selectFile(item)
-        operation(repository, statusStore.refreshCurrentRepository)
+        InteractionProfiler.measure("文件操作.点击处理") {
+            selection.selectFile(item)
+            operation(repository, statusStore.refreshCurrentRepository)
+        }
     }
 }
 

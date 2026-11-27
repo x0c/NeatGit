@@ -20,32 +20,33 @@
 
 ```
 CommitComposerBar（视图）
-  └─ 触发 AI 生成 → CommitMessageGenerationService.generateMessage(for:)
+  └─ 触发 AI 生成（CommitComposerBar → ContentView → CommitWorkflowStore.generateMessage(for:snapshot:)）
+       └─ CommitMessageGenerationService.generateMessage(for:)
        ├─ 读取 RepositoryStatusStore.snapshot（文件列表）
        ├─ CommitDiffAnalyzer.analyze() → CommitAnalysisContext
-       │    ├─ 过滤 committableItems（CommitExclusion.shouldExcludeFromDefaultCommit）
+       │    ├─ 过滤 committableItems（isCheckableForCommit && !CommitExclusion.shouldExcludeFromDefaultCommit）
        │    ├─ 加载 diff stats（git diff --numstat）
        │    ├─ 选择详细分析项（按 FileAnalysis.score 排序）
-       │    ├─ 加载 diff snippets（git diff / diff --cached）
+       │    ├─ 加载 diff snippets（已暂存 / 未暂存取 git diff；新增文件读工作区正文节选）
        │    ├─ 提取 symbol hints
        │    └─ 构建 summary/guidance/signals（委托 CommitPromptBuilder）
        ├─ CommitPromptBuilder.buildUserPrompt()
-       ├─ LLMChatService.complete(responseFormat: .jsonObject)
+       ├─ LLMChatService.complete(maxTokens: 1024, responseFormat: .jsonObject)
        └─ CommitMessageCandidate.decode() → composedMessage
        └─ 写入 AICommitDebugStore（调试日志）
 
 CommitComposerBar（视图）
-  └─ 触发提交 → ContentView.runCommitAction(_:)
+  └─ 触发提交 → ContentView.runCommit(_:) → CommitWorkflowStore.commit(_:repository:snapshot:onFinish:)
        ├─ 构建 GitCommitRequest（repository + message + snapshot.changedFiles + action）
        ├─ 调用 GitRepositoryCommitService.run(_:)（Task.detached, .userInitiated 优先级）
        │    ├─ 1. 校验 message 非空
-       │    ├─ 2. 过滤 committableItems（isCheckableForCommit && !CommitExclusion.shouldExcludeFromDefaultCommit）
+       │    ├─ 2. 过滤 committableItems（isCommittableByDefault）
        │    ├─ 3. synchronizeIndex — 先 unstage 再 stage（详见§八）
        │    ├─ 4. ensureCommitHasStagedChanges
        │    ├─ 5. git commit -m <message>
        │    └─ 6. 若 action == .commitAndPush → git push（失败不回滚 commit）
        ├─ 成功：清空 commitMessage + statusStore.refreshCurrentRepository()
-       └─ 失败：展示 CommitAlert
+       └─ 失败：展示提交失败弹窗
 ```
 
 ---
@@ -59,10 +60,11 @@ CommitComposerBar（视图）
 | `Domain/CommitMessageCandidate.swift` | 结构化输出模型 + JSON 解码 + composedMessage（public） |
 | `Domain/LLMProviderConfiguration.swift` | LLM 配置值对象（public） |
 | `Domain/CommitExclusion.swift` | .gitignore 硬排除逻辑（共享） |
-| `Services/LLMChatService.swift` | OpenAI 兼容 API 调用 + response_format 支持 |
+| `Services/LLMChatService.swift` | OpenAI 兼容 API 调用 + response_format 支持；请求体固定关闭思考模式 |
 | `Services/CommitDiffAnalyzer.swift` | diff 加载、condensation、symbol 提取、FileAnalysis 评分 |
 | `Services/CommitPromptBuilder.swift` | prompt 构建 + 摘要/guidance/signals 计算 |
 | `Services/CommitMessageGenerationService.swift` | 薄协调层：分析 → 构建 prompt → 单次 LLM 调用 |
+| `Services/GitRepositoryCommitService.swift` | 提交 / 推送；提交前同步 index |
 | `Stores/AICommitDebugStore.swift` | 调试日志存储 |
 
 ---
@@ -145,7 +147,7 @@ JSON 解析失败时：响应以 `{` 开头 → 抛错「AI 返回了不完整�
 
 1. **必须调用 `GitRepositoryCommitService.run(_:)`**，不要绕过它直接调 `git commit`。
 2. **index 同步机制的顺序不可颠倒**：`synchronizeIndex` 先 `git restore --staged`，再 `git add -A`。
-3. **文件路径相关的 Git 命令（含新增命令）必须使用 `--pathspec-from-file=- --pathspec-file-nul`**，正确处理路径含空格的文件。
+3. **文件路径相关的 Git 命令（含新增命令）必须使用 `--pathspec-from-file=- --pathspec-file-nul`**，正确处理路径含空格的文件；路径还要经 `makePathspecData` 加 `:(literal)` 前缀按字面匹配，否则名为 `a*.txt` 的文件会连带暂存 `av.txt`。
 4. **`.gitignore` 文件的硬排除**：统一使用 `CommitExclusion.shouldExcludeFromDefaultCommit(_:)`（`Domain/CommitExclusion.swift`），不要在各处重复实现。
 5. **push 失败不回滚 commit**。
 6. **提交后 UI 状态刷新**：commit 成功后必须 `statusStore.refreshCurrentRepository()`。
@@ -159,6 +161,6 @@ JSON 解析失败时：响应以 `{` 开头 → 抛错「AI 返回了不完整�
 2. **LLM baseURL 必须包含 scheme**（`https://`），`LLMChatService` 不会自动补全。
 3. **扩展 ChangeKind 分类**时，注意 weight 的数值对 prompt token 预算有直接影响。
 4. **`response_format: json_object` 不是所有 LLM 都支持**：如果遇到不支持该参数的 API，LLMChatService 会在请求体中附带该字段，API 端忽略即可，不会报错；但如果 API 端严格校验导致 400，需要在 LLMChatService 层做兼容。
-5. **DeepSeek V4（`deepseek-v4-flash` / `deepseek-v4-pro`）默认开启 thinking**：`reasoning_content` 与最终 `content` 共享 `max_tokens`。若不关闭 thinking，复杂 diff 下常见 `finish_reason=length`，表现为半截 JSON 或空 content，UI 会报「空内容 / 无法解析的 JSON」。`LLMChatService` 对 DeepSeek host/model 会自动附带 `thinking: { type: "disabled" }`；commit 生成路径还会显式 `disableThinking: true` 与 `maxTokens: 1024`。
+5. **思考模式一律关闭**：`LLMChatService.complete` 对所有请求固定附带 `thinking: { type: "disabled" }`，没有按模型开关的参数。思考内容会与 `max_tokens` 抢预算，开着时表现为 `finish_reason=length`、半截 JSON 或空 content；commit 生成路径的 `maxTokens` 为 1024。
 
 <!-- 该文档整理/压缩于 2026-10-21 -->

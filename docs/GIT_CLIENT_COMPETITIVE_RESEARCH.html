@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>NeatGit 竞品调研 · 图文版</title>
+  <style>
+    :root {
+      --paper: #f3f5f7;
+      --surface: #ffffff;
+      --ink: #172033;
+      --muted: #657087;
+      --rule: #dce2e9;
+      --blue: #087ff5;
+      --blue-soft: #e8f2ff;
+      --coral: #e9653b;
+      --coral-soft: #fff0e9;
+      --navy: #111d33;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    a:hover { color: var(--blue); }
+    img { display: block; width: 100%; }
+    .page { width: min(1320px, calc(100% - 64px)); margin: 0 auto; }
+    .topbar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 28px 0 20px; border-bottom: 1px solid var(--rule);
+      font-size: 12px; font-weight: 650; letter-spacing: .14em;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark {
+      display: grid; place-items: center; width: 28px; height: 28px;
+      border-radius: 8px; background: var(--blue); color: white; font-size: 15px;
+    }
+    .muted { color: var(--muted); }
+    .hero { padding: 68px 0 56px; }
+    .eyebrow {
+      margin: 0 0 16px; color: var(--blue); font-size: 12px; font-weight: 700;
+      letter-spacing: .16em; text-transform: uppercase;
+    }
+    h1 { margin: 0; max-width: 900px; font-size: clamp(48px, 6.5vw, 84px); line-height: 1.04; letter-spacing: -.055em; }
+    .hero-sub { max-width: 720px; margin: 28px 0 0; color: var(--muted); font-size: 20px; line-height: 1.65; }
+    .hero-path {
+      display: grid; grid-template-columns: 1.08fr 1fr .92fr; gap: 12px;
+      margin: 36px 0 28px; max-width: 960px;
+    }
+    .path-item {
+      padding: 18px 20px; border: 1px solid var(--rule); border-radius: 10px;
+      background: rgba(255,255,255,.64); font-size: 15px; font-weight: 650;
+    }
+    .path-item span { display: block; margin-bottom: 6px; color: var(--blue); font-size: 11px; letter-spacing: .12em; }
+    .window {
+      overflow: hidden; border: 1px solid #cfd7e1; border-radius: 12px; background: var(--surface);
+    }
+    .window-bar {
+      display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px;
+      border-bottom: 1px solid var(--rule); background: #f8fafc;
+    }
+    .window-bar i { width: 8px; height: 8px; border-radius: 50%; background: #c5cdd8; }
+    .window-bar span { margin-left: 8px; color: var(--muted); font-size: 11px; letter-spacing: .04em; }
+    figcaption { margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    figcaption a { text-decoration: underline; text-underline-offset: 3px; }
+    .section { padding: 64px 0; border-top: 1px solid var(--rule); }
+    .section-head { display: grid; grid-template-columns: 120px 1fr; gap: 24px; margin-bottom: 32px; }
+    .section-no { color: var(--blue); font-size: 13px; font-weight: 700; letter-spacing: .12em; }
+    h2 { margin: 0; font-size: clamp(32px, 4vw, 52px); line-height: 1.12; letter-spacing: -.035em; }
+    .section-desc { max-width: 700px; margin: 12px 0 0; color: var(--muted); font-size: 17px; line-height: 1.65; }
+    .split { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, .75fr); gap: 28px; align-items: start; }
+    .split.reverse { grid-template-columns: minmax(280px, .75fr) minmax(0, 1.65fr); }
+    .note { padding: 26px; border-radius: 10px; background: var(--surface); border: 1px solid var(--rule); }
+    .note + .note { margin-top: 14px; }
+    .note.borrow { border-top: 3px solid var(--blue); }
+    .note.avoid { border-top: 3px solid var(--coral); }
+    .note-label { margin: 0 0 12px; font-size: 11px; font-weight: 750; letter-spacing: .14em; }
+    .borrow .note-label { color: var(--blue); }
+    .avoid .note-label { color: var(--coral); }
+    .note h3 { margin: 0 0 10px; font-size: 23px; line-height: 1.25; letter-spacing: -.02em; }
+    .note p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+    .product-tag { display: inline-flex; margin-bottom: 14px; padding: 6px 9px; border-radius: 6px; background: var(--blue-soft); color: var(--blue); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+    .duo { display: grid; grid-template-columns: 1.15fr .85fr; gap: 28px; margin-top: 28px; }
+    .mini { padding: 18px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+    .mini h3 { margin: 16px 0 6px; font-size: 20px; }
+    .mini p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .mini img { border: 1px solid var(--rule); border-radius: 6px; }
+    .callout-strip {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px;
+    }
+    .chip { padding: 9px 12px; border: 1px solid var(--rule); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 13px; }
+    .chip.good { color: #0968c7; background: var(--blue-soft); border-color: #c9e0fb; }
+    .chip.bad { color: #b24b2c; background: var(--coral-soft); border-color: #f5d2c3; }
+    .next { padding: 64px 0; background: var(--navy); color: #f6f8fb; }
+    .next .eyebrow { color: #7eb8ff; }
+    .next .section-desc { color: #acb8ca; }
+    .next-grid { display: grid; grid-template-columns: 1.08fr 1fr .92fr; gap: 16px; margin-top: 32px; }
+    .next-card { overflow: hidden; border: 1px solid #334159; border-radius: 10px; background: #182640; }
+    .next-card .thumb { height: 180px; overflow: hidden; border-bottom: 1px solid #334159; }
+    .next-card img { height: 100%; object-fit: cover; object-position: top left; }
+    .next-card:nth-child(3) img { object-position: 50% 35%; }
+    .next-body { padding: 22px; }
+    .next-num { color: #7eb8ff; font-size: 11px; font-weight: 700; letter-spacing: .14em; }
+    .next-card h3 { margin: 10px 0; font-size: 23px; }
+    .next-card p { margin: 0; color: #b6c1d2; font-size: 14px; line-height: 1.7; }
+    .not-next { margin-top: 26px; color: #acb8ca; font-size: 13px; line-height: 1.8; }
+    .not-next strong { color: #f2a486; }
+    footer { padding: 36px 0 48px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+    .sources { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 14px 0; }
+    .sources a { color: #40516e; text-decoration: underline; text-underline-offset: 3px; }
+    @media (max-width: 900px) {
+      .page { width: min(100% - 32px, 720px); }
+      .hero { padding-top: 44px; }
+      .hero-path, .next-grid { grid-template-columns: 1fr; }
+      .section-head { grid-template-columns: 1fr; gap: 10px; }
+      .split, .split.reverse, .duo { grid-template-columns: 1fr; }
+      .split.reverse figure { order: -1; }
+      .next-card .thumb { height: 220px; }
+    }
+    @media print {
+      body { background: white; }
+      .page { width: 100%; }
+      .section, .next { break-inside: avoid; }
+      a { text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">N</span> NEATGIT / FIELD NOTES</div>
+      <div class="muted">COMPETITIVE RESEARCH · 2026.11</div>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow">六个研究视角 · 七张官方界面 · 一条产品主线</p>
+      <h1>值得借鉴的，<br>不是更多功能。</h1>
+      <p class="hero-sub">主流工具正在变重，新兴工具正在引入新心智。NeatGit 的机会，是把“找到要处理的仓库、看清改动、放心提交”这条路径做得比谁都顺。</p>
+      <div class="hero-path" aria-label="产品主线">
+        <div class="path-item"><span>01 / FIND</span>多仓库待处理总览</div>
+        <div class="path-item"><span>02 / REVIEW</span>单仓库高效审阅</div>
+        <div class="path-item"><span>03 / COMMIT</span>可控、符合习惯的提交</div>
+      </div>
+      <figure>
+        <div class="window"><div class="window-bar"><i></i><i></i><i></i><span>NEATGIT · CURRENT</span></div><img src="assets/competitive-research/neatgit-current.png" alt="NeatGit 当前三栏界面，左侧项目、中间文件、右侧差异，底部为紧凑提交卡片"></div>
+        <figcaption>NeatGit 当前界面 · 隔离示例仓库真实截图。现有优势是原生三栏和清晰提交路径，下一步不需要另起一套信息架构。</figcaption>
+      </figure>
+    </section>
+
+    <section class="section" id="overview">
+      <div class="section-head"><div class="section-no">01 / OVERVIEW</div><div><h2>先告诉用户：<br>哪里需要处理。</h2><p class="section-desc">多仓库的价值不在于“全部列出来”，而在于把有改动、待推送、待拉取的项目浮到眼前。</p></div></div>
+      <div class="split">
+        <figure>
+          <div class="window"><div class="window-bar"><i></i><i></i><i></i><span>FINDERGIT · OVERVIEW</span></div><img src="assets/competitive-research/findergit-overview.png" alt="FinderGit 总览页，包含 Needs attention 和 Changes、Ahead、Behind、Diverged 等智能视图"></div>
+          <figcaption>图片来源：<a href="https://findergit.app">FinderGit 官网</a></figcaption>
+        </figure>
+        <aside>
+          <div class="note borrow"><p class="note-label">借鉴 / TAKE</p><h3>待处理视图，而不是仓库列表</h3><p>在现有侧栏增加未提交数、领先／落后数，以及“只看需要处理”过滤。用户不用逐个仓库点进去找状态。</p></div>
+          <div class="note avoid"><p class="note-label">边界 / SKIP</p><h3>不搬整张仪表盘</h3><p>账户、Agents、Stars、平台过滤器和安全卡片会稀释核心路径。第一版只做状态徽标与过滤，不做批量推送。</p></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" id="review">
+      <div class="section-head"><div class="section-no">02 / REVIEW</div><div><h2>让审阅连续发生，<br>不要频繁找位置。</h2><p class="section-desc">好的差异页不是颜色更多，而是改动规模可见、导航不断档、上下文需要时能拿回来。</p></div></div>
+      <figure>
+        <div class="window"><div class="window-bar"><i></i><i></i><i></i><span>ZED · GIT</span></div><img src="assets/competitive-research/zed-git.webp" alt="Zed Git 界面，多文件差异集中展示，文件可选，差异块带暂存操作和上下导航"></div>
+        <figcaption>图片来源：<a href="https://zed.dev/git">Zed 官方 Git 页面</a>。借鉴文件与差异块的联动、上下导航和增删统计；不把 NeatGit 改成 IDE。</figcaption>
+      </figure>
+      <div class="callout-strip"><span class="chip good">文件行 +N / −M</span><span class="chip good">上一处 / 下一处</span><span class="chip good">跨文件连续导航</span><span class="chip good">保留选择位置</span></div>
+      <div class="duo">
+        <div class="mini"><img src="assets/competitive-research/github-desktop-expand.png" alt="GitHub Desktop 差异行菜单提供 Expand Whole File"><h3>折叠，不等于丢掉上下文</h3><p>“只看变更”中保留展开入口，需要时多看几行，不必退出模式。</p></div>
+        <div class="mini"><img src="assets/competitive-research/fork-diff.jpg" alt="Fork 差异视图，红绿背景清晰区分删除和新增"><h3>先让差异易读，再谈高级能力</h3><p>清晰块边界、增删着色和行内高亮是基础；下一版优先补导航，而不是换渲染器。</p></div>
+      </div>
+      <div class="split" style="margin-top: 28px;">
+        <figure>
+          <div class="window"><div class="window-bar"><i></i><i></i><i></i><span>TOWER · WORKING COPY</span></div><img src="assets/competitive-research/tower-working-copy.png" alt="Tower 工作区，文件列表、差异和提交区联动，差异块支持 Stage Lines 与 Stage Chunk"></div>
+          <figcaption>图片来源：<a href="https://www.git-tower.com">Tower 官方</a></figcaption>
+        </figure>
+        <aside>
+          <div class="note borrow"><p class="note-label">下一步候选 / DESIGN FIRST</p><h3>按代码块提交，价值高但不能只做按钮</h3><p>NeatGit 会自动协调提交范围与暂存区。先定义文件选择、代码块选择和已有暂存区的优先级，再进入实现。</p></div>
+          <div class="note avoid"><p class="note-label">不照搬 / SKIP</p><h3>不把全部 Git 操作塞进工具栏</h3><p>Fetch、Rebase、Git-Flow 等并非当前主路径。工具栏只保留高频动作。</p></div>
+        </aside>
+      </div>
+      <p style="margin: 14px 0 0;" class="muted">补充截图来源：<a href="https://docs.github.com/en/desktop/making-changes-in-a-branch/committing-and-reviewing-changes-to-your-project-in-github-desktop">GitHub Desktop</a> · <a href="https://git-fork.com">Fork</a></p>
+    </section>
+
+    <section class="section" id="workflow">
+      <div class="section-head"><div class="section-no">03 / WORKFLOW</div><div><h2>借安全网，<br>不借新的心智负担。</h2><p class="section-desc">新工具最值得学的是撤销、并行工作区和清晰状态，而不是把分支模型整体换掉。</p></div></div>
+      <div class="split reverse">
+        <aside>
+          <div class="note borrow"><p class="note-label">借鉴 / TAKE</p><h3>撤销与并行工作区</h3><p>支持未推送最近提交“撤销但保留改动”；同一仓库的多个 worktree 在侧栏归组并标分支。</p></div>
+          <div class="note avoid"><p class="note-label">边界 / SKIP</p><h3>不引入虚拟分支泳道</h3><p>GitButler 的多泳道表达能力强，但学习成本和底层复杂度高。NeatGit 继续使用标准 Git 心智。</p></div>
+        </aside>
+        <figure>
+          <div class="window"><div class="window-bar"><i></i><i></i><i></i><span>GITBUTLER · WORKSPACE</span></div><img src="assets/competitive-research/gitbutler-workspace.png" alt="GitButler 工作区，多条虚拟分支泳道包含文件、提交和推送操作"></div>
+          <figcaption>图片来源：<a href="https://docs.gitbutler.com">GitButler 官方文档</a></figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section" id="ai">
+      <div class="section-head"><div class="section-no">04 / AI COMMIT</div><div><h2>AI 不该更自动，<br>而该更懂项目。</h2><p class="section-desc">生成提交说明已是标配。真正影响体验的是规则、范围、语言风格和用户确认。</p></div></div>
+      <div class="split">
+        <figure>
+          <div class="window"><div class="window-bar"><i></i><i></i><i></i><span>TOWER · AI COMMIT</span></div><img src="assets/competitive-research/tower-ai-commit.avif" alt="Tower 工作区提交区使用 AI 生成提交说明"></div>
+          <figcaption>图片来源：<a href="https://www.git-tower.com/help/guides/working-copy/committing-with-ai/mac">Tower AI Commit 官方文档</a></figcaption>
+        </figure>
+        <aside>
+          <div class="note borrow"><p class="note-label">借鉴 / TAKE</p><h3>仓库规则 + 范围透明 + 一键重写</h3><p>参考最近提交风格；生成前说明会发送哪些文件和内容；结果支持“更简短／换语言／重新生成”。</p></div>
+          <div class="note avoid"><p class="note-label">边界 / SKIP</p><h3>建议可以，执行必须确认</h3><p>不自动暂存全部、免确认提交、自动推送、跳过钩子或改写历史。大改动只建议拆分。</p></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <section class="next" id="next">
+    <div class="page">
+      <p class="eyebrow">RECOMMENDED NEXT</p>
+      <h2>下一版，只做三组提升。</h2>
+      <p class="section-desc">不扩面板，不改分支模型。把已有核心路径做完整。</p>
+      <div class="next-grid">
+        <article class="next-card"><div class="thumb"><img src="assets/competitive-research/findergit-overview.png" alt="FinderGit 待处理总览缩略图"></div><div class="next-body"><span class="next-num">01 / FIND</span><h3>待处理仓库总览</h3><p>未提交、待推送、待拉取一眼可见；增加过滤，不做批量远端操作。</p></div></article>
+        <article class="next-card"><div class="thumb"><img src="assets/competitive-research/zed-git.webp" alt="Zed 差异审阅缩略图"></div><div class="next-body"><span class="next-num">02 / REVIEW</span><h3>差异导航与增删统计</h3><p>文件显示 +N／−M，差异上下导航并可跨文件，折叠处能展开上下文。</p></div></article>
+        <article class="next-card"><div class="thumb"><img src="assets/competitive-research/tower-ai-commit.avif" alt="Tower AI 提交缩略图"></div><div class="next-body"><span class="next-num">03 / COMMIT</span><h3>AI 规则与范围透明</h3><p>仓库级规则、最近提交风格、发送范围提示，以及更简短／换语言重写。</p></div></article>
+      </div>
+      <p class="not-next"><strong>本版不做：</strong>虚拟分支 · PR／CI 收件箱 · 完整 Finder · 自动推送 · AI 自动解决冲突。按代码块提交先完成范围规则设计。</p>
+    </div>
+  </section>
+
+  <footer class="page">
+    <strong>来源与口径</strong>：真实产品界面来自官方页面，截图仅用于产品研究与评论，权利归各产品方。调研日期 2026-11-27。
+    <div class="sources"><a href="https://findergit.app">FinderGit</a><a href="https://git-fork.com">Fork</a><a href="https://zed.dev/git">Zed</a><a href="https://docs.github.com/en/desktop">GitHub Desktop</a><a href="https://www.git-tower.com">Tower</a><a href="https://docs.gitbutler.com">GitButler</a><a href="GIT_CLIENT_COMPETITIVE_RESEARCH.md">完整文字报告与更多来源</a></div>
+    竞品功能以官方文档为依据，未逐款安装实测；社区评价只用于识别问题。本文是产品建议，不代表功能已拍板。
+  </footer>
+</body>
+</html>

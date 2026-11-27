@@ -60,8 +60,8 @@ final class CommitWorkflowStore {
             return "正在读取仓库状态..."
         }
 
-        let excludedCount = snapshot.changedFiles.filter(CommitExclusion.shouldExcludeFromDefaultCommit).count
-        let committableCount = snapshot.changedFiles.filter(\.isCommittableByDefault).count
+        let excludedCount = snapshot.excludedFromCommitCount
+        let committableCount = snapshot.committableCount
 
         guard committableCount > 0 else {
             return "没有可提交的更改，自动排除 .gitignore 和不提交的文件。"
@@ -114,12 +114,14 @@ final class CommitWorkflowStore {
             defer { isGeneratingMessage = false }
 
             do {
-                commitMessage = try await generationService.generateMessage(
-                    for: repository,
-                    changedItems: changedFiles,
-                    configuration: configuration,
-                    systemPrompt: systemPrompt
-                )
+                commitMessage = try await InteractionProfiler.measureAsync("AI 提交说明.完整生成", detail: "文件数：\(changedFiles.count)") {
+                    try await generationService.generateMessage(
+                        for: repository,
+                        changedItems: changedFiles,
+                        configuration: configuration,
+                        systemPrompt: systemPrompt
+                    )
+                }
             } catch {
                 Self.logger.error("AI 生成失败: \(GitCommandError.describe(error))")
                 showAlert(title: "生成失败", message: GitCommandError.describe(error))
@@ -149,7 +151,9 @@ final class CommitWorkflowStore {
             defer { isRunningCommitAction = false }
 
             do {
-                let result = try await commitService.run(request)
+                let result = try await InteractionProfiler.measureAsync("提交推送.完整执行", detail: "动作：\(action == .commitAndPush ? "提交并推送" : "仅提交")") {
+                    try await commitService.run(request)
+                }
                 commitMessage = ""
                 onFinish()
 

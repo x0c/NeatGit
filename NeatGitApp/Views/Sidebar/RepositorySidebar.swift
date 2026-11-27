@@ -13,7 +13,12 @@ struct RepositorySidebar: View {
     @Binding var expandedGroupID: RepositoryGroup.ID?
     let onToggleGroup: (RepositoryGroup.ID) -> Void
     let onToggleRepositoryStar: (GitRepository) -> Void
-    let onPrefetchRepository: (GitRepository) -> Void
+    /// 接收侧栏仓库行的进入 / 离开事件；由状态容器统一决定何时预取。
+    let onPrefetchRepository: (RepositoryHoverEvent) -> Void
+
+    private var repositoryCount: Int {
+        groups.reduce(0) { $0 + $1.repositories.count }
+    }
 
     var body: some View {
         // 选择、键盘导航、折叠动画全部交给系统 List，
@@ -28,8 +33,8 @@ struct RepositorySidebar: View {
                             onToggleStar: {
                                 onToggleRepositoryStar(repository)
                             },
-                            onPrefetch: {
-                                onPrefetchRepository(repository)
+                            onHover: {
+                                onPrefetchRepository($0)
                             }
                         )
                         .tag(repository.id)
@@ -49,6 +54,32 @@ struct RepositorySidebar: View {
         .frame(minWidth: Layout.minWidth, idealWidth: Layout.idealWidth, maxHeight: .infinity)
         .navigationSplitViewColumnWidth(min: Layout.minWidth, ideal: Layout.idealWidth)
         .accessibilityIdentifier("repository-sidebar")
+        .safeAreaBar(edge: .top, spacing: 0) {
+            HStack(spacing: Theme.Spacing.sm) {
+                Label("项目", systemImage: "folder")
+                    .font(.headline)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.primary)
+
+                Text(repositoryCount, format: .number)
+                    .font(Theme.Font.count)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, Theme.Spacing.xs)
+                    .padding(.vertical, Theme.Spacing.textStack)
+                    .background(.quaternary, in: Capsule())
+                    .accessibilityLabel("\(repositoryCount) 个项目")
+
+                Spacer(minLength: 0)
+
+                if isScanning {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("正在扫描项目")
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
+        }
         .overlay {
             // 空态只保留完成任务不可替代的一句：扫描中给诚实的进行态，
             // 扫完无结果说明位置（个人目录），不写教学式说明。
@@ -101,14 +132,17 @@ private struct RepositoryGroupLabel: View {
 
             // 组内有收藏项目时给个小星标，折叠状态下也能看出哪组重要。
             if group.starredRepositoryCount > 0 {
-                Image(systemName: "star.fill")
+                Image(systemName: "star")
                     .font(.system(size: 8))
                     .foregroundStyle(Theme.Palette.starred)
             }
 
             Text(group.repositories.count, format: .number)
                 .font(Theme.Font.count)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, Theme.Spacing.xs)
+                .padding(.vertical, Theme.Spacing.textStack)
+                .background(.quaternary, in: Capsule())
         }
         .help(group.parentPath)
     }
@@ -118,7 +152,7 @@ private struct RepositoryRow: View {
     let repository: GitRepository
     let isStarred: Bool
     let onToggleStar: () -> Void
-    let onPrefetch: () -> Void
+    let onHover: (RepositoryHoverEvent) -> Void
 
     @State private var isHovering = false
 
@@ -126,35 +160,37 @@ private struct RepositoryRow: View {
         Label {
             HStack(spacing: Theme.Spacing.xs) {
                 Text(repository.name)
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
 
                 Spacer(minLength: Theme.Spacing.xs)
 
-                // 未收藏时只在悬停状态下露出星标，平时不干扰列表。
-                if isStarred || isHovering {
-                    Button(action: onToggleStar) {
-                        Image(systemName: isStarred ? "star.fill" : "star")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(isStarred ? AnyShapeStyle(Theme.Palette.starred) : AnyShapeStyle(.tertiary))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(isStarred ? "取消收藏 \(repository.name)" : "收藏项目 \(repository.name)")
-                    .help(isStarred ? "取消收藏" : "收藏项目")
-                    .accessibilityIdentifier("repository-star-\(repository.id)")
+                // 星标始终占位，仅改变透明度，悬停时不会让文件名左右跳动。
+                Button(action: onToggleStar) {
+                    Image(systemName: "star")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(isStarred ? AnyShapeStyle(Theme.Palette.starred) : AnyShapeStyle(.tertiary))
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.borderless)
+                .opacity(isStarred || isHovering ? 1 : 0)
+                .allowsHitTesting(isStarred || isHovering)
+                .accessibilityHidden(!isStarred && !isHovering)
+                .accessibilityLabel(isStarred ? "取消收藏 \(repository.name)" : "收藏项目 \(repository.name)")
+                .help(isStarred ? "取消收藏" : "收藏项目")
+                .accessibilityIdentifier("repository-star-\(repository.id)")
             }
         } icon: {
-            Image(systemName: "folder.fill")
+            Image(systemName: "folder")
+                .foregroundStyle(Theme.Palette.accent.opacity(0.78))
         }
+        .padding(.vertical, Theme.Spacing.textStack)
         .onHover { isHovering in
             self.isHovering = isHovering
-            // 悬停即预热仓库状态，点击时数据已在缓存里，选中无需等待。
-            if isHovering {
-                onPrefetch()
-            }
+            // 进入与离开都原样上报：停留满一小段时间才预取，快速划过不再为每行各起 git 进程。
+            onHover(isHovering ? .entered(repository) : .exited(repository))
         }
         .help(repository.path)
         .contextMenu {

@@ -91,7 +91,7 @@ struct ContentView: View {
                 .disabled(commitStore.isBusy)
         } content: {
             filePane
-                .navigationSplitViewColumnWidth(min: 250, ideal: 290, max: 380)
+                .navigationSplitViewColumnWidth(min: 250, ideal: 280, max: 310)
         } detail: {
             RepositoryPreviewPane(
                 repository: selectedRepository,
@@ -109,7 +109,7 @@ struct ContentView: View {
                     }
                 }
             )
-            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 430, maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(selectedRepository?.name ?? "NeatGit")
         }
         .navigationSplitViewStyle(.balanced)

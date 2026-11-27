@@ -50,14 +50,8 @@ struct RepositorySidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 196, ideal: 220, max: 300)
+        .navigationSplitViewColumnWidth(min: 196, ideal: 220, max: 250)
         .accessibilityIdentifier("repository-sidebar")
-        .safeAreaBar(edge: .top, spacing: 0) {
-            Text("仓库")
-                .font(.headline)
-                .frame(maxWidth: .infinity, minHeight: Theme.Workspace.headerHeight, alignment: .leading)
-                .padding(.horizontal, Theme.Spacing.lg)
-        }
         .overlay {
             if !query.isEmpty && results.isEmpty {
                 ContentUnavailableView.search(text: query)
@@ -99,7 +93,6 @@ private struct RepositoryGroupLabel: View {
         HStack(spacing: Theme.Spacing.xs) {
             Text(group.title)
                 .font(.callout.weight(.medium))
-                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.head)
             Spacer(minLength: Theme.Spacing.xs)

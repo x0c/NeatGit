@@ -4,12 +4,12 @@ NeatGit 是一个面向 macOS 的原生 Git 客户端，使用 SwiftUI 构建，
 
 它不是一个追求“所有 Git 子命令都能点出来”的重型客户端，而是围绕本地项目发现、文件变更查看、提交准备和后续 AI 辅助这些高频流程来设计。
 
-[简体中文](README.zh-CN.md) · [下载安装包](https://github.com/x0c/NeatGit/releases/latest)
+[简体中文](README.zh-CN.md) · [下载安装包](https://github.com/NeatMacApps/NeatGit/releases/latest) · [MIT 许可证](LICENSE)
 
 首次安装（macOS 26+，Apple silicon / Intel）：
 
 ```bash
-curl -fL https://github.com/x0c/NeatGit/releases/download/v0.1.1/NeatGit-0.1.1.dmg -o /tmp/NeatGit.dmg && open /tmp/NeatGit.dmg
+curl -fL https://github.com/NeatMacApps/NeatGit/releases/download/v0.1.1/NeatGit-0.1.1.dmg -o /tmp/NeatGit.dmg && open /tmp/NeatGit.dmg
 ```
 
 将 NeatGit.app 拖入 Applications 后打开应用；按 ⌘, 配置 AI 服务。Git 浏览不需要 AI 配置。

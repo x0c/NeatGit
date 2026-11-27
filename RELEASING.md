@@ -9,6 +9,10 @@ person with access can download them: authentication is access control,
 not confidentiality). It never creates, uploads to, or
 modifies a public GitHub Release.
 
+## Repository and license
+
+NeatGit is licensed under [MIT](LICENSE). The canonical public repository is `NeatMacApps/NeatGit`. Keep the old `x0c/NeatGit` alias available for existing downloads and Sparkle's raw appcast URL; do not recreate that slug.
+
 ## Durable release requirements
 
 R1 — Snapshot before build. The script runs `xcodegen generate` (the

@@ -4,8 +4,8 @@ import Synchronization
 /// 文本差异计算器：输入两侧全文，输出逐行对照结果与行内高亮区间。
 ///
 /// 纯计算，只依赖 Foundation：不启动进程、不读写文件。输入就是两侧全文，
-/// 计算时不再需要任何 Git 进程。日常加载差异不调用本类型；需要逐行对照结果时
-/// 经 `RepositoryDiffDocument.calculatingDiffRows()` 在后台按需计算。
+/// 计算时不再需要任何 Git 进程。由加载差异的后台任务经
+/// `RepositoryDiffDocument.calculatingDiffRows()` 调用，主线程不做差异计算。
 ///
 /// - 行级：Myers（线性空间的中点分割版本，与 git 默认差异同族）。先剔除公共前后缀，
 ///   只对中段求差异；中段带编辑距离预算，超预算的段落降级为「先全部删除、后全部新增」。
@@ -73,20 +73,31 @@ enum TextDiffCalculator {
 
     /// 进程内累计的 `calculate` 调用次数，只供测试证明某条路径有没有触发差异计算，不参与业务判断。
     private static let calculationCount = Mutex<Int>(0)
+    /// 其中发生在主线程上的次数，只供测试证明差异计算没有落在主线程，不参与业务判断。
+    private static let mainThreadCalculationCount = Mutex<Int>(0)
 
     /// 累计计算次数（测试观测用）。
     static var recordedCalculationCount: Int {
         calculationCount.withLock { $0 }
     }
 
+    /// 其中发生在主线程上的次数（测试观测用）。
+    static var recordedMainThreadCalculationCount: Int {
+        mainThreadCalculationCount.withLock { $0 }
+    }
+
     /// 把累计计算次数清零（测试观测用）。
     static func resetRecordedCalculationCount() {
         calculationCount.withLock { $0 = 0 }
+        mainThreadCalculationCount.withLock { $0 = 0 }
     }
 
     /// 把两侧全文切分成行并计算差异。
     static func calculate(originalText: String, modifiedText: String, options: Options = Options()) -> Result {
         calculationCount.withLock { $0 += 1 }
+        if Thread.isMainThread {
+            mainThreadCalculationCount.withLock { $0 += 1 }
+        }
 
         let originalLines = splitLines(originalText)
         let modifiedLines = splitLines(modifiedText)

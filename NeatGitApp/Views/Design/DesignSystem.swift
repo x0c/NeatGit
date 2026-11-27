@@ -8,16 +8,26 @@ import SwiftUI
 ///
 /// 材质规则（liquid-glass-practices）：`.regularMaterial` 只用于浮在内容之上的功能层
 ///（loading 胶囊这类短浮层），正文/输入区保持实底；阴影仅表达前后层级，当前产品无阴影。
+/// 图标规则：应用内 SF Symbols 一律使用描边变体，不使用 `.fill` 实心变体；
+/// 收藏等选中状态通过语义色、文字与无障碍标签表达，不通过实心填充表达。
 enum Theme {
     /// 间距阶梯，统一按 4pt 栅格取值。
     ///
     /// 唯一例外是 `textStack`（行内两行文本的紧凑间距）。
     /// 10 / 13 / 14 / 20 等散落数值一律向本表收敛，不新增台阶。
     enum Spacing {
-        /// 2pt，同一行两行文本之间（文件名/路径），仅此一处允许小于 4pt 栅格。
+        /// 2pt，同一视图内两行文本或紧凑标签的纵向间距。
         static let textStack: CGFloat = 2
+        /// 4pt，极小控件的内边距。
+        static let xxs: CGFloat = 4
         /// 6pt，同一行内图标与文字。
         static let xs: CGFloat = 6
+        /// 8pt，相关控件与信息组之间。
+        static let sm: CGFloat = 8
+        /// 12pt，面板内容与卡片内边距。
+        static let md: CGFloat = 12
+        /// 16pt，面板标题与独立区域之间。
+        static let lg: CGFloat = 16
     }
 
     /// 圆角。本产品唯一的常规曲率是 `standard` 8pt。
@@ -38,6 +48,10 @@ enum Theme {
     /// 靠 `!`/`D` 角标与提示文案区分；如需颜色亦可分，须由产品裁定后再改本表。
     /// 新增/修改/未跟踪/星标色与相邻正文的区分度须在深浅色下实机验证（绿/青/黄在暗色选中行上易糊）。
     enum Palette {
+        /// 跟随系统外观与强调色设置，用于当前任务的关键图标。
+        static let accent = Color(nsColor: .controlAccentColor)
+        /// 提交卡片等独立功能区域的清晰实底。
+        static let panelBackground = Color(nsColor: .controlBackgroundColor)
         /// Git 新增，绿色。
         static let gitAdded = Color(nsColor: .systemGreen)
         /// Git 修改，橙色。

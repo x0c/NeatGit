@@ -1,6 +1,6 @@
 # NeatGit 核心知识库
 
-> 覆盖范围：NeatGit 核心功能（仓库扫描、文件状态、Diff、提交流程、Monaco 渲染、状态管理）的业务规则、代码入口、隐性约束与验证路径。
+> 覆盖范围：NeatGit 核心功能（仓库扫描、文件状态、Diff、提交流程、原生差异渲染、状态管理）的业务规则、代码入口、隐性约束与验证路径。
 
 ---
 
@@ -16,12 +16,12 @@ NeatGit 是面向 macOS 的原生 Git 客户端（SwiftUI 构建）。核心循�
 - 二、核心业务规则与隐性约束
   - 2.1 Git 命令执行基础设施（GitCommandRunner）
   - 2.2 文件状态模型（FileSection / isCheckableForCommit）
-  - 2.3 Diff 当前边界（5 MB / 二进制 / 冲突 / 多文件 / Monaco 渲染 / 只看变更）
+  - 2.3 Diff 当前边界（5 MB / 二进制 / 冲突 / 仓库级变动列表 / 原生渲染 / 只看变更）
   - 2.4 Diff 加载流程
   - 2.5 仓库切换与零加载（SWR）机制
   - 2.6 提交流程（index 同步机制）
   - 2.7 AI commit message 生成
-  - 2.8 Monaco Diff 渲染链路
+  - 2.8 原生差异渲染链路
   - 2.9 状态管理规范
   - 2.10 仓库扫描约束
   - 2.11 应用内更新与签名发布约束
@@ -37,10 +37,12 @@ NeatGit 是面向 macOS 的原生 Git 客户端（SwiftUI 构建）。核心循�
 - 最低支持 **macOS 26.0**，以 Xcode 26 的系统 SDK 构建，不再保留旧系统的界面兼容分支。
 - 窗口、三栏导航、列表选择、工具栏、输入框、设置与弹窗优先使用 SwiftUI 系统控件；不遍历窗口内部视图改标题颜色，不自绘系统已有的选择态与折叠控件。
 - 系统负责 Liquid Glass、浅色/深色外观与辅助功能适配；玻璃用于导航和操作区域，代码与表单正文保持清晰，不叠加装饰性玻璃。
-- 差异预览保留 Monaco 的代码高亮和差异计算，通过 macOS 26 的 `WebView` / `WebPage` 集成。这里是明确的非全原生边界，不用功能不完整的自制文本对比替换它。
+- 差异预览当前使用原生 TextKit 文本视图，不内嵌网页；右侧以全部变更文件折叠列表呈现，仅当前关注文件展开并加载差异，其余文件不为预览启动内容加载。原生视图的装配顺序与容器尺寸约束见 2.8，违反后分别表现为内容区整片空白、改尺寸时崩溃。
 - Git、AI 和本地配置的业务语义不因 UI API 升级而改变。
+- 主窗口的四个工作区采用一致的原生标题层级：项目 / 文件更改带系统图标，差异标题带轻量文件图标；文件摘要使用短状态标签，零计数回落为中性色，不让“0 个不提交”呈现为警示。新增间距与语义色统一接入 `Theme`，不在各视图另起一套视觉常量。
+- 提交区保持独立实底卡片和固定 72pt 的滚动输入区，避免旧版弹性输入区吸走整栏剩余高度；卡片只表达功能边界，不给代码正文叠加装饰性材质。
 
-依据：[Apple 新设计迁移指南](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass)、[WWDC25 SwiftUI 新设计](https://developer.apple.com/videos/play/wwdc2025/323/)、[WWDC25 WebKit for SwiftUI](https://developer.apple.com/videos/play/wwdc2025/231/)。接口可用性以本机 Xcode 26 SDK 声明和实际构建为准。
+依据：[Apple 新设计迁移指南](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass)、[WWDC25 SwiftUI 新设计](https://developer.apple.com/videos/play/wwdc2025/323/)。接口可用性以本机 Xcode 26 SDK 声明和实际构建为准。
 
 ## Compact Settings (owner rollout, 2026-10-22)
 
@@ -61,7 +63,7 @@ NeatGitApp/
 ├── Domain/           # 纯数据模型，无 I/O
 │   ├── GitRepository.swift          # 仓库实体（路径/名称/ID）
 │   ├── RepositoryFileModels.swift   # 文件状态模型（FileSection / FileItem / FileState）
-│   ├── RepositoryDiffModels.swift   # Diff 相关模型（DiffMode / DiffDocument / 逐行对照结果 / MonacoDiffPayload）
+│   ├── RepositoryDiffModels.swift   # Diff 相关模型（DiffMode / DiffDocument / 逐行对照结果 RepositoryDiffRow）
 │   ├── RepositoryGroup.swift       # 左侧栏分组模型
 │   ├── ChangeKind.swift            # 文件分类枚举 + 权重
 │   ├── DiffLineStat.swift          # diff 行统计 + numstat 解析
@@ -81,7 +83,6 @@ NeatGitApp/
 │   ├── CommitDiffAnalyzer.swift      # diff 分析、摘要、symbol 提取
 │   ├── CommitPromptBuilder.swift     # prompt 构建 + 摘要/guidance/signals
 │   ├── LLMChatService.swift          # OpenAI 兼容 API 调用 + response_format
-│   ├── BundleStaticFileServer.swift     # 本地 HTTP 服务（Monaco 静态资源）
 │   └── KeychainSecretStore.swift        # Keychain 读写（LLM API Key）
 ├── Stores/           # @Observable 状态容器，运行在 @MainActor
 │   ├── RepositoryStore.swift        # 全局仓库列表 + 扫描状态 + 星标
@@ -92,14 +93,11 @@ NeatGitApp/
 ├── Views/            # SwiftUI 视图层
 │   ├── Sidebar/      # 左栏：仓库列表与分组
 │   ├── RepositoryStatus/ # 中栏：文件状态面板 + 右栏：预览/diff
-│   ├── Diff/         # MonacoDiffView（macOS 26 WebView / WebPage）
+│   ├── Diff/         # 原生差异视图（NativeDiffView：NSTextView + 系统默认 TextKit 1，并排 / 单栏）
 │   ├── Commit/       # 底部提交栏 + AI 调试窗口
 │   └── Settings/     # LLM 配置设置页
 ├── ContentView.swift # 原生三栏 NavigationSplitView + safeAreaBar
 └── NeatGitApp.swift  # App 入口，Window Group + WindowScene 配置
-
-Web/MonacoDiff/       # Vite + Monaco 前端，构建产物内嵌到 Bundle
-└── src/main.js       # Monaco Diff Editor 初始化 + window.neatGit.setDiff() 协议
 ```
 
 ---
@@ -148,30 +146,28 @@ Web/MonacoDiff/       # Vite + Monaco 前端，构建产物内嵌到 Bundle
 **冲突文件处理**：
 
 - 检测方式：`item.hasConflict == true` 时在 `makeDocument` 最前的 guard 阶段拦截。
-- 拒绝原因：冲突内容包含 conflict markers（`<<<<<<<` / `=======` / `>>>>>>>`），Monaco side-by-side 会把 marker 当普通文本渲染，无法表达三方合并语义，容易误导用户，故直接拒绝展示而非展示带 marker 的原文。
+- 拒绝原因：冲突内容包含 conflict markers（`<<<<<<<` / `=======` / `>>>>>>>`），差异视图只做两方对照，会把 marker 当普通文本渲染，无法表达三方合并语义，容易误导用户，故直接拒绝展示而非展示带 marker 的原文。
 - 返回结果：抛出 `GitCommandError`（"冲突文件的可视化 diff 还没接入。"）。
 
-**多文件汇总 diff**：
+**仓库级变动列表（2026-11-27 用户确认）**：
 
-- 尚未实现。`RepositoryDiffStore.select()` 在 `selectedFiles.count != 1` 时会显示占位提示（"暂不支持多文件对照" / "当前已选中 N 个文件。第一版先聚焦单文件 diff。"）。
-- 扩展时的设计约束：
-  - `RepositoryDiffDocument` 当前是单文件模型（一个 `filePath` + 一组 `originalText/modifiedText`），多文件汇总需要新模型（例如 `RepositoryDiffDocumentCollection` 或在现有模型上增加文件索引），或改变 `displayedDocument` 的语义。
-  - `MonacoDiffPayload` 也是单文件协议，多文件需要考虑：一次注入多个 diff 还是切换 tab 逐个注入；Monaco DiffEditor 实例是否支持同时展示多文件。
-  - `cachedDocuments` 的 `CacheKey` 已按 `(repositoryID, itemID, mode)` 三元组索引，多文件汇总的缓存 key 需要额外设计（例如基于选中文件集合的 fingerprint）。
+- 右侧展示当前仓库全部 `changedFiles`，但只展开当前关注的一个文件；其他文件始终为紧凑折叠行。展开状态复用 `WorkspaceSelectionStore.selectedFileIDs`，右侧点击通过 `ContentView` 回调 `selection.selectFile`，不在预览视图另存一套展开状态。
+- `RepositoryDiffStore`、`RepositoryDiffDocument` 与缓存继续保持单文件语义，只读取当前展开文件；不为折叠行预加载或拼接多文件文档，不引入多文件缓存键。
+- 无选择或多选时全部折叠并显示选择提示。二进制、冲突、过大文件等拒绝原因只出现在对应文件的展开区域，不再遮盖整个文件列表。
+- 展开区使用有界高度的 `NativeDiffView`，内部滚动；外层列表负责折叠行滚动，不伪造整页连续滚动。切换展开文件时沿用现有任务取消、缓存、预取、模式切换和“只看变更”链路。
 
-**Monaco 渲染约束**：
+**原生渲染约束**（链路与装配约束见 2.8）：
 
-- 响应式布局：容器宽度 < 960px（`INLINE_DIFF_BREAKPOINT`，`main.js`）时自动切换 inline mode（`renderSideBySide: false` + `experimental.useTrueInlineView: true`），由 `ResizeObserver` 监听容器宽度。
-- 就绪机制：`MonacoDiffController` 等待 `WebPage.load` 导航序列的 `.finished`，再验证 `setDiff` / `setAppearance` / `setChangesOnly` 三个 JS 入口。未就绪时只保存最新 payload。
-- 注入与去重：`callJavaScript(arguments:)` 传 JSON 字符串，页面 `JSON.parse` 后调用 `setDiff`，不拼接源码到脚本。单一消费者串行更新，只在成功后记住 `lastRenderedPayload`；快速切换最终以最新值为准，重试/取消通过独立页面与 generation 隔离旧回调。
-- 外观：SwiftUI 的 `colorScheme` / `colorSchemeContrast` 通过 `setAppearance(appearance, highContrast)` 同步；浅深色定制主题和高对比主题均保留变更标记。网页非持久化存储，仅 Debug 开启检查器。
-- `useInlineViewWhenSpaceIsLimited` 初始设为 `false`，响应式切换由 `applyResponsiveLayout()` 自行控制，不依赖 Monaco 内置的自动切换。
+- 输入只认加载好的 `RepositoryDiffDocument`，差异不在界面侧另算。把逐行结果变成富文本是后台任务；期间换了文档、布局或开关，旧批次结果按批次号直接丢弃。
+- 布局分并排（左原文、右改后，各一个只读文本视图，逐行对齐、滚动联动）与单栏（删除行在上、新增行在下，行首带 `-` / `+`）两种，不随窗口宽度自动切换，由头部「差异布局」选择。
+- 固定行高；容器宽度取内容宽度与可视宽度的较大者，内容更宽时横向滚动。任何一行都不能折行，否则其后全部行错位。
+- 配色全部是随外观动态解析的系统颜色，浅色 / 深色 / 高对比切换时只重绘，不重建富文本。
+- 没有语法高亮，只有增删与行内着色。
 
 **「只看变更」的实现边界**：
 
-- 由 Monaco 的 `hideUnchangedRegions` 承担，内容通道始终注入全文。这样变更前后保留 3 行上下文（`UNCHANGED_CONTEXT_LINE_COUNT`）、行号保持真实值，折叠块还能点击或拖动展开。不要回到在 Swift 侧按 hunk 裁剪文本（旧做法）：那会丢掉上下文与真实行号。
-- 开启 `hideUnchangedRegions.enabled` 只是让未变更区域「可折叠」，区域初始仍是展开态；必须额外调 `collapseAllUnchangedRegions()` 才会真折起。切文件或重算差异后区域会重建，所以 `onDidUpdateDiff` 里还要补一次折叠。
-- 开关走独立的 `setChangesOnly` 通道，不进 `MonacoDiffPayload`。摆回内容 payload 会让每次切换重新序列化并注入整份文件，大文件下直接可见卡顿。
+- 由原生渲染侧折叠未变更内容承担：输入始终是完整的逐行对照结果，长段未变更内容前后各留 3 行（`NativeDiffRenderBuilder.contextLines`），中间折叠成一行可点击的展开行，行号保持文件里的真实值。不要回到在 Swift 侧按 hunk 裁剪文本（旧做法）：那会丢掉上下文与真实行号。
+- 开关、布局与展开集合是渲染侧的独立状态，不进 `RepositoryDiffStore` 的文档缓存键；切换它们不重新读 git。
 
 ### 2.4 Diff 加载流程
 
@@ -182,14 +178,16 @@ RepositoryDiffStore.select / selectMode → loadCurrentSelection
        │    ├─ GitCommandRunner.readObjects()  # Git 对象合并成一次 cat-file --batch
        │    └─ readWorkingTreeFile()           # 工作区侧直读文件
        └─ TextDiffCalculator.calculate()      # 进程内算出逐行对照结果，写入 RepositoryDiffDocument.rows
-  └─ MonacoDiffView.setDiff()   # JS 注入 window.neatGit.setDiff(payload)，只传两侧全文
+  └─ NativeDiffView（RepositoryPreviewPane 里）
+       └─ NativeDiffRenderBuilder.render()     # 后台把逐行结果变成各面板的富文本
+       └─ NativeDiffPaneController.apply()     # 主线程写进原生文本视图
 ```
 
-读内容时不再额外跑 `git diff` 解析 `@@` 行：只看变更改由 Monaco 自己算未变更区域，hunk 模型已废弃。单文件 diff 因此只启动 1 个 git 进程（旧实现是 4–5 个），本机实测 2000 行文件的读取中位数约 15ms。
+读内容时不再额外跑 `git diff` 解析 `@@` 行：只看变更由原生渲染侧折叠未变更区域，hunk 模型已废弃。单文件 diff 因此只启动 1 个 git 进程（旧实现是 4–5 个），本机实测 2000 行文件的读取中位数约 15ms。
 
-**逐行对照结果（数据层，界面尚未使用）**：`GitRepositoryDiffLoader.makeDocument` 在同一个后台任务里调用 `TextDiffCalculator.calculate(originalText:modifiedText:)`，把结果写进 `RepositoryDiffDocument` 的 `rows` / `originalLines` / `modifiedLines` / `originalEndsWithoutNewline` / `modifiedEndsWithoutNewline`；主线程不做差异计算，也不为此启动 git 进程。行级用 Myers 算法，超出编辑距离或搜索步数预算的段落降级为「先全部删除、后全部新增」，任何输入都在有限时间内返回；行内只给改动行标字符区间（`RepositoryDiffRow.originalChangedRanges` / `modifiedChangedRanges`，UTF-16 偏移、相对该侧 `text`）。行模型 `RepositoryDiffRow` / `RepositoryDiffLine` / `RepositoryDiffRowKind` 定义在 `Domain/RepositoryDiffModels.swift`，`RepositoryDiffDocument` 的 `==` 不比较 `rows`。界面目前仍是 Monaco 网页差异视图，由它自己计算并渲染差异；逐行对照结果尚未被任何视图读取。
+**逐行对照结果（原生差异视图的直接输入）**：`GitRepositoryDiffLoader.makeDocument` 在同一个后台任务里调用 `TextDiffCalculator.calculate(originalText:modifiedText:)`，把结果写进 `RepositoryDiffDocument` 的 `rows` / `originalLines` / `modifiedLines` / `originalEndsWithoutNewline` / `modifiedEndsWithoutNewline`；主线程不做差异计算，也不为此启动 git 进程。行级用 Myers 算法，超出编辑距离或搜索步数预算的段落降级为「先全部删除、后全部新增」，任何输入都在有限时间内返回；行内只给改动行标字符区间（`RepositoryDiffRow.originalChangedRanges` / `modifiedChangedRanges`，UTF-16 偏移、相对该侧 `text`）。行模型 `RepositoryDiffRow` / `RepositoryDiffLine` / `RepositoryDiffRowKind` 定义在 `Domain/RepositoryDiffModels.swift`。`RepositoryDiffDocument` 的 `==` 不比较 `rows`；渲染侧靠 `renderingID` 区分每次加载的版本，不比较两侧全文。`calculatingDiffRows()` 是耗时操作，只在后台调用，不要在主线程或界面刷新路径上调。
 
-`RepositoryDiffStore` 有预取缓存（最多 24 条，文件行悬停延迟 60ms 触发）。双状态文件通过原生分段选择器切换暂存区/工作区，只读允许的模式；有暂存内容时默认显示暂存区。刷新版本号变化会清理该仓库缓存。
+`RepositoryDiffStore` 有预取缓存（最多 24 条，文件行悬停延迟 60ms 触发），缓存里的文档同样带算好的 `rows`。双状态文件通过原生分段选择器切换暂存区/工作区，只读允许的模式；有暂存内容时默认显示暂存区。刷新版本号变化会清理该仓库缓存。
 
 ### 2.5 仓库切换与零加载（SWR）机制
 
@@ -229,24 +227,36 @@ RepositoryDiffStore.select / selectMode → loadCurrentSelection
 - `.gitignore` 排除逻辑统一到 `CommitExclusion.shouldExcludeFromDefaultCommit`，`CommitDiffAnalyzer` 和 `GitRepositoryCommitService` 共用。
 - 调试日志通过 `AICommitDebugStore` 记录，可在 `AICommitDebugWindowView` 中查看。
 
-### 2.8 Monaco Diff 渲染链路
+### 2.8 原生差异渲染链路
 
 ```
-MonacoResourceLoader（actor，后台复用启动任务）
-   └─ BundleStaticFileServer 提供 Bundle.main.resourceURL 下的静态资源
-MonacoDiffView → MonacoDiffController → WebView(page)
-   └─ WebPage.load(http://127.0.0.1:<随机端口>/index.html)
-   └─ 导航完成 + JS 入口验证
-   └─ callJavaScript(arguments:) → setDiff / setAppearance
-       └─ main.js 更新 originalModel / modifiedModel、外观与自适应布局
+RepositoryPreviewPane（展开文件的区域，固定高度 240–640）
+  └─ NativeDiffView（NSViewRepresentable）→ Coordinator
+       ├─ 小文档快速路径（≤256 行且两侧合计 ≤64,000 UTF-8 字节）：同步准备，省去异步调度
+       ├─ 大文档后台任务：NativeDiffRenderBuilder.render(document, layout, showChangesOnly, expanded)
+       │    # 把逐行对照结果变成各面板的显示行、富文本、行样式与行号；不做差异计算
+       └─ 主线程：NativeDiffContainerView.install → NativeDiffPaneController.apply
+            └─ NSScrollView（NativeDiffClipView）→ NativeDiffTextView（系统默认 TextKit 1，只读可选）
+                 # 在背景绘制阶段画行号、整行底色、彩色行上的选择高亮与展开行
 ```
 
-加载超时 15 秒、单次更新超时 10 秒会显示中文错误和重试入口，不以白屏吞掉错误。重试保留最新内容/外观但重建网页，避免旧调用覆盖新页面。静态资源服务的同步启动不在主线程执行。
+- **装配顺序**：`NSScrollView` 必须先换成自定义裁剪视图、再挂文档视图。反过来的话文档视图会留在被换掉的旧裁剪视图里，不在窗口层级内，真实窗口里内容区整片空白。
+- **容器高度必须是有限值**：文本容器高度等于按行数算出的文档高度，不设无限高。无限高的容器在有内容之后再改尺寸（窗口变宽、切换文件都会走到），系统会在内部通知旧版排版器时直接崩溃。
+- **行号与底色画在背景绘制阶段**：`draw(_:)` 返回后行号栏区域已被裁掉，画不进去。
+- **过期结果不上屏**：批次号与任务取消双重保护；换了文档先清空面板，避免新结果到达前闪现旧文件。
+- **渲染结果小缓存**：最近 4 种「文档版本 + 布局 + 只看变更 + 展开集合」组合，避免来回切换重复构建富文本。
+- **滚动联动**：并排时两栏行数、行高相同，位置直接照搬，只走系统位置变化通知一个通道。
+- **滚动锚点**：换内容（展开折叠行、开关只看变更）后按视口顶部最近的一处改动恢复位置，不跳回顶部。
+- **性能量测与派生数据缓存**：项目/文件分组、文件索引和提交计数只在输入变化时计算；文件悬停只在右侧视图观察。统一 `InteractionProfiler` 的采集、指标口径、实测数据与锁屏边界见 [交互性能指南](INTERACTION_PERFORMANCE.md)，不得把后台 Git 或异步调度耗时算成 MainActor 点击处理耗时。
+
+已知遗留（未解决，不计为通过）：折叠展开行的点击在真实用户路径上复核不充分；大文件内存仍偏高。
+
+旧网页差异视图已删除：`MonacoDiffView`、`BundleStaticFileServer`、Monaco 静态资源、`Web/` 下的网页源码及其网页验收脚本都已不在仓库里，应用不再依赖 Node 构建链。差异显示效果由真实窗口验收与 `NativeWorkspaceTests` 承担，不再有网页黑盒验收。
 
 ### 2.9 状态管理规范
 
 - 所有 store（含 `RepositoryDiffStore`）均使用 `@MainActor + @Observable`；视图用 `@State` 持有，任务/缓存用 `@ObservationIgnored` 排除无关重绘。
-- 后台任务用 `Task.detached(priority: .userInitiated)`；不要在新代码里用 `DispatchQueue.global().async`。
+- 后台任务用 `Task.detached(priority: .userInitiated)`；不要在新代码里用 `DispatchQueue.global().async`。唯一例外是原生差异的小文档快速路径：只有同时满足 256 行与 64,000 字节上限才允许同步准备，大文件不得搬回 MainActor。
 
 ### 2.10 仓库扫描约束
 
@@ -272,11 +282,11 @@ MonacoDiffView → MonacoDiffController → WebView(page)
 2. **新增 Git 命令**，必须走 `GitCommandRunner`，不要直接用 `Process`。
 3. **处理路径含空格的文件**，必须通过 `--pathspec-from-file=- --pathspec-file-nul` 传入并加 `:(literal)` 前缀（见 2.6），不要在参数数组里直接拼路径字符串。
 4. **扩展提交流程**，注意 index 同步逻辑：如果只 stage 增量文件而不 unstage 已排除的暂存文件，会导致意外提交。
-5. **Monaco WebView**，必须通过 `MonacoResourceLoader` 等静态服务就绪并等待导航完成后注入，不直接启动并发渲染任务。
+5. **装配原生差异面板**，必须先换自定义裁剪视图、再挂文档视图，文本容器高度用有限值（见 2.8）；顺序或高度不对分别表现为内容区整片空白、改尺寸时崩溃。
 6. **Swift 6 并发隔离**：改动 Store、Binding、异步任务捕获时，先按 actor 边界思考，再动手，不要等编译器报错后再补 `@Sendable` 标注。
 7. **扩展二进制 diff 时**，注意当前 null byte 检测（`isBinaryData` → `data.contains(0)`）位于 `GitRepositoryDiffLoader.makeDocument` 内、文件大小检查之后、文本解码之前。如果改为基于文件扩展名或 `git diff --stat` 的 `-Binary` 标记来检测，需要同时调整这个守卫的位置和逻辑，否则会出现大文件先被 size guard 拦截、小二进制文件仍走 null byte 检测的不一致路径。另外，UTF-16 等含 null byte 的非 UTF-8 纯文本会被误判为二进制，扩展时需考虑是否引入编码嗅探。
-8. **多文件 diff 扩展时**，`RepositoryDiffStore` 的整个缓存模型是单文件语义——`CacheKey` 由 `(repositoryID, itemID, mode)` 三元组构成，`displayedDocument` 和 `document` 都是单个 `RepositoryDiffDocument?`。如果直接在 `select()` 里拼多个文件的内容塞进同一个 `RepositoryDiffDocument`，会导致 `filePath` 语义丢失、缓存 key 冲突、`languageHint` 只能取一种语言。正确做法是先设计多文件聚合模型（或在 `RepositoryDiffDocument` 上增加文件索引层），再同步改造 `CacheKey`、`MonacoDiffPayload` 和 `MonacoDiffView` 的注入协议。
-9. **修改 Monaco 注入协议时**，内容通道为 `MonacoDiffPayload` → `MonacoDiffController` 参数传递 → `window.neatGit.setDiff`；这三处和桥接测试一起更新。外观走独立 `setAppearance`、只看变更走独立 `setChangesOnly`，都不要混进文件内容缓存键——混进去的代价是每次切开关都重传整份文件。
+8. **仓库级变动列表**只在 `RepositoryPreviewPane` 聚合文件行，不聚合并发加载多个文档。展开文件仍复用单文件 `CacheKey` 与选择链路；折叠行不得触发 diff 加载。`NativeDiffView` 必须给有界高度，且它是内部滚动的文本视图，不要把多个全文高度直接塞进外层 `ScrollView`。
+9. **修改原生差异视图的输入时**，内容只认加载好的 `RepositoryDiffDocument`，渲染侧按 `renderingID` 比较版本，不比较两侧全文。只看变更、布局与展开状态走渲染侧的独立通道，都不要混进 `RepositoryDiffStore` 的文档缓存键——混进去的代价是每次切开关都重新读 git。
 10. **修改 diff 预览刷新机制时**，`RepositoryPreviewPane` 用 `task(id: selectionSignature)` 和 `task(id: hoverPrefetchSignature)` 两条独立链路驱动刷新，而非 `onChange`。这是有意为之——Xcode 26.3 / Swift 6.2 下该视图叠加复杂 `onChange` / `Binding` 会触发编译器崩溃。模式切换由小型 `Binding` 直接调用 store 的 `selectMode`；其他选择刷新仍扩展签名，不堆叠复杂 `onChange`。主窗口也把三栏、工具栏和状态监听拆成独立属性，避免 Xcode 26.3 的类型检查超时。
 
 ---
@@ -285,8 +295,7 @@ MonacoDiffView → MonacoDiffController → WebView(page)
 
 - **本地构建**：`xcodegen generate && xcodebuild -scheme NeatGit -configuration Debug` 或直接用 Xcode 打开 `NeatGit.xcodeproj`。
 - **工程配置变更**（新增/删除/移动 Swift 文件）：必须先改 `project.yml`，再 `xcodegen generate`，不要只手改 xcodeproj。
-- **Monaco 前端变更**：`cd Web/MonacoDiff && npm run build` 直接生成到 `NeatGitApp/Resources/MonacoDiff/`。文件 hash 会变化，之后需在仓库根执行 `xcodegen generate` 更新工程资源列表，不另复制 dist。
-- **回归**：`NeatGitTests` 覆盖原生控件、差异 store、真实 WebView 桥接、提交安全（`CommitSafetyTests`：冲突判定、路径字面匹配）和行级 / 行内差异计算（`TextDiffCalculatorTests`）；`NeatGitUITests` 覆盖窗口点击路径。运行命令与锁屏限制见 [Operations 指南](OPERATIONS_GUIDE.md)。
+- **回归**：`NeatGitTests` 覆盖原生控件、差异 store、原生差异渲染构建（`NativeDiffRenderTests`：只看变更折叠、展开恢复、并排两栏行数一致）、提交安全（`CommitSafetyTests`：冲突判定、路径字面匹配）和行级 / 行内差异计算（`TextDiffCalculatorTests`）；`NeatGitUITests` 覆盖窗口点击路径。运行命令与锁屏限制见 [Operations 指南](OPERATIONS_GUIDE.md)。
 - **后台端到端验收**：`./Tests/E2E/run_e2e.sh`（pytest，见下节 2.12）。构建产物在 `.build/e2e-derived/Build/Products/Debug/NeatGit.app`，`Tests/E2E/e2e.json` 用 `app_path` 指向它、`build: false`：harness 自带的 xcodebuild 路径对 xcodegen 工程不带 `-scheme`，会直接报错。
 
 ### 2.12 后台端到端验收（Tests/E2E，2026-11）
@@ -298,7 +307,7 @@ MonacoDiffView → MonacoDiffController → WebView(page)
 - **像素基线**：`Tests/E2E/baselines/main-window.png` 是 1400x912 pt 窗口（含标题栏）的整窗图，`max_diff_ratio=0.0`；`capture` 步记录 `occlusion_ratio`（窗口被完全遮挡时仍是 1.0，靠窗口缓冲截图，属预期）。首次运行报 `baseline_created`，之后必须报 `match`；改窗口尺寸或改 UI 用 `E2E_UPDATE_BASELINES=1` 重冻。
 - **光标守卫**：默认 `MACOS_E2E_GUARD=all`，会因本人真实移动鼠标而 `FocusViolation`；本人正在用机器时用 `MACOS_E2E_GUARD=frontmost`（只跳过光标比较，仍验证 App 没有被激活）。
 - **已知断言盲区**：文件行（`RepositoryFilePanel`）的 `file-<item.id>` identifier 被外层 section 的 identifier 吞掉，AX 只能按行文本（值）定位，且行没有 `AXPress`，用例改为按 role+frame 从 driver 快照取 token 后后台点击。行 identifier 恢复后可直接 `driver.press(identifier="file-changed:<path>")`。
-- **UI 边界**：产品没有分支列表和提交历史列表，二者无法用 AX 断言；端到端覆盖的是仓库扫描、三段文件分组、提交区、单文件 diff 与二进制拒绝说明（2.3）。
+- **UI 边界**：产品没有分支列表和提交历史列表，二者无法用 AX 断言；端到端覆盖仓库扫描、三段文件分组、提交区、全部变动折叠列表、单文件展开与二进制拒绝说明（2.3）。`diff-file-<item.id>` 暴露“已展开 / 已折叠”，每条用例前还会强制校准整窗尺寸，避免系统布局时机造成像素基线漂移。
 
 ---
 
@@ -306,5 +315,6 @@ MonacoDiffView → MonacoDiffController → WebView(page)
 
 - [`docs/AI_COMMIT_GUIDE.md`](AI_COMMIT_GUIDE.md)：AI commit 生成链路与真实提交流程接入。
 - [`docs/OPERATIONS_GUIDE.md`](OPERATIONS_GUIDE.md)：构建、启动验证、常见阻碍排查。
+- [`docs/LIGHTWEIGHT_RESEARCH.md`](LIGHTWEIGHT_RESEARCH.md)：差异展示技术路线的调研结论、原生方案的最终决策、把关结果与遗留问题。
 
 <!-- 该文档整理/压缩于 2026-10-21 -->

@@ -41,13 +41,6 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Build Monaco Frontend
-        run: |
-          set -euo pipefail
-          cd Web/MonacoDiff
-          npm ci
-          npm run build
-
       - name: Generate Xcode Project
         run: xcodegen generate
 

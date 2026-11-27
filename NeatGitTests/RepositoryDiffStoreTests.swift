@@ -40,7 +40,7 @@ final class RepositoryDiffStoreTests: XCTestCase {
         store.selectMode(.staged)
         XCTAssertFalse(store.isLoading)
         XCTAssertEqual(store.document?.modifiedText, "暂存版本\n")
-        XCTAssertEqual(store.payloadForDisplay?.modeTitle, "已暂存")
+        XCTAssertEqual(store.displayedDocument?.mode.title, "已暂存")
     }
 
     func testFastModeSwitchCannotApplyOldContent() async throws {
@@ -79,7 +79,7 @@ final class RepositoryDiffStoreTests: XCTestCase {
         XCTAssertTrue(store.availableModes.isEmpty)
 
         store.select(repository: nil, selectedFiles: [], cacheRevision: 2)
-        XCTAssertNil(store.payloadForDisplay)
+        XCTAssertNil(store.displayedDocument)
         XCTAssertEqual(store.messageTitle, "先选择一个仓库")
     }
 
@@ -115,11 +115,15 @@ final class RepositoryDiffStoreTests: XCTestCase {
         XCTAssertEqual(store.document?.modifiedText, "新文件内容\n")
     }
 
-    /// 加载只取两侧全文：逐行对照结果默认为空，调用按需入口后才补全，且等值不受影响。
-    func testLoadedDocumentLeavesDiffRowsEmptyUntilRequested() async throws {
+    /// 加载恰好计算一次逐行对照结果，且计算全部发生在主线程之外。
+    ///
+    /// 原生差异视图直接使用加载完成的文档，不再有「按需补算」入口。用计算器的调用计数证明，
+    /// 不用耗时阈值：换机器、调试构建、并行负载都不会让结论漂移。
+    func testLoadingCalculatesDiffRowsExactlyOnceOffTheMainThread() async throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let store = RepositoryDiffStore()
+        TextDiffCalculator.resetRecordedCalculationCount()
         store.select(repository: fixture.repository, selectedFiles: [fixture.item], cacheRevision: 1)
         try await waitUntilLoaded(store)
         XCTAssertEqual(store.activeMode, .staged)
@@ -127,44 +131,45 @@ final class RepositoryDiffStoreTests: XCTestCase {
         let staged = try XCTUnwrap(store.document)
         XCTAssertEqual(staged.originalText, "")
         XCTAssertEqual(staged.modifiedText, "暂存版本\n")
-        XCTAssertTrue(staged.rows.isEmpty, "加载后的文档不应带逐行对照结果")
+        XCTAssertEqual(staged.rows.map(\.kind), [.added], "加载完成的文档应直接带逐行对照结果")
+        XCTAssertEqual(staged.rows.first?.modified?.lineNumber, 1)
+        XCTAssertEqual(staged.rows.first?.modified?.text, "暂存版本")
         XCTAssertEqual(staged.originalLines, 0)
-        XCTAssertEqual(staged.modifiedLines, 0)
+        XCTAssertEqual(staged.modifiedLines, 1)
         XCTAssertFalse(staged.originalEndsWithoutNewline)
         XCTAssertFalse(staged.modifiedEndsWithoutNewline)
-
-        // 按需入口是耗时操作，这里放到后台线程调用。
-        let stagedCalculated = await Task.detached(priority: .userInitiated) {
-            staged.calculatingDiffRows()
-        }.value
-        XCTAssertEqual(stagedCalculated.rows.map(\.kind), [.added])
-        XCTAssertEqual(stagedCalculated.rows.first?.modified?.lineNumber, 1)
-        XCTAssertEqual(stagedCalculated.originalLines, 0)
-        XCTAssertEqual(stagedCalculated.modifiedLines, 1)
-        XCTAssertEqual(stagedCalculated, staged, "算没算过逐行对照结果不影响等值")
-        XCTAssertTrue(staged.rows.isEmpty, "调用入口不改变加载得到的文档")
+        XCTAssertEqual(TextDiffCalculator.recordedCalculationCount, 1, "一次加载恰好计算一次")
+        XCTAssertEqual(TextDiffCalculator.recordedMainThreadCalculationCount, 0, "差异计算不能落在主线程")
 
         store.selectMode(.workingTree)
         try await waitUntilLoaded(store)
         let workingTree = try XCTUnwrap(store.document)
-        XCTAssertTrue(workingTree.rows.isEmpty)
-        let workingTreeCalculated = await Task.detached(priority: .userInitiated) {
-            workingTree.calculatingDiffRows()
-        }.value
         // 「暂存版本」与「工作区版本」只有两个字符重合，相似度不到配对阈值，按删除加新增输出。
-        XCTAssertEqual(workingTreeCalculated.rows.map(\.kind), [.removed, .added])
-        XCTAssertEqual(workingTreeCalculated.rows.first?.original?.lineNumber, 1)
-        XCTAssertEqual(workingTreeCalculated.rows.first?.original?.text, "暂存版本")
-        XCTAssertEqual(workingTreeCalculated.rows.last?.modified?.lineNumber, 1)
-        XCTAssertEqual(workingTreeCalculated.rows.last?.modified?.text, "工作区版本")
-        XCTAssertEqual(workingTreeCalculated.originalLines, 1)
-        XCTAssertEqual(workingTreeCalculated.modifiedLines, 1)
+        XCTAssertEqual(workingTree.rows.map(\.kind), [.removed, .added])
+        XCTAssertEqual(workingTree.rows.first?.original?.lineNumber, 1)
+        XCTAssertEqual(workingTree.rows.first?.original?.text, "暂存版本")
+        XCTAssertEqual(workingTree.rows.last?.modified?.lineNumber, 1)
+        XCTAssertEqual(workingTree.rows.last?.modified?.text, "工作区版本")
+        XCTAssertEqual(workingTree.originalLines, 1)
+        XCTAssertEqual(workingTree.modifiedLines, 1)
+        XCTAssertEqual(TextDiffCalculator.recordedCalculationCount, 2, "两种对比模式各计算一次")
+        XCTAssertEqual(TextDiffCalculator.recordedMainThreadCalculationCount, 0)
+
+        // 切回已加载过的模式走缓存：立即得到带逐行对照结果的文档，不再计算。
+        TextDiffCalculator.resetRecordedCalculationCount()
+        store.selectMode(.staged)
+        XCTAssertFalse(store.isLoading)
+        XCTAssertEqual(store.document?.rows.map(\.kind), [.added])
+        XCTAssertEqual(store.document?.modifiedText, "暂存版本\n")
+        XCTAssertEqual(store.displayedDocument?.mode.title, "已暂存")
+        XCTAssertEqual(TextDiffCalculator.recordedCalculationCount, 0, "从缓存取回不应重新计算")
     }
 
-    /// 性能守卫：加载较大的文本差异时不触发差异计算。
+    /// 性能守卫：加载较大的文本差异时同样只计算一次，且不在主线程计算。
+    ///
     ///
     /// 用计算器的调用计数证明，而不是耗时阈值：换机器、调试构建、并行负载都不会让结论漂移。
-    func testLoadingLargeTextDoesNotCalculateDiffRows() async throws {
+    func testLoadingLargeTextCalculatesDiffRowsOnceOffTheMainThread() async throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
 
@@ -183,30 +188,28 @@ final class RepositoryDiffStoreTests: XCTestCase {
         try originalText.write(to: file, atomically: true, encoding: .utf8)
         try runGit(["add", "--", name], at: fixture.directory)
         try modifiedText.write(to: file, atomically: true, encoding: .utf8)
-        let item = RepositoryFileItem(section: .changed, path: name, kind: .file, state: .changed("已暂存 + 未暂存"), gitStatusCode: "AM", previousPath: nil)
+        // 只有未暂存改动：加载时直接走未暂存对比，不会先加载暂存对比再切换，计算次数才能恰好是 1。
+        let item = RepositoryFileItem(section: .changed, path: name, kind: .file, state: .changed("未暂存"), gitStatusCode: ".M", previousPath: nil)
 
         let store = RepositoryDiffStore()
         TextDiffCalculator.resetRecordedCalculationCount()
         store.select(repository: fixture.repository, selectedFiles: [item], cacheRevision: 1)
-        store.selectMode(.workingTree)
         try await waitUntilLoaded(store)
         XCTAssertEqual(store.activeMode, .workingTree)
+        XCTAssertEqual(store.availableModes, [.workingTree])
 
         let loaded = try XCTUnwrap(store.document)
         XCTAssertEqual(loaded.originalText, originalText)
         XCTAssertEqual(loaded.modifiedText, modifiedText)
-        XCTAssertTrue(loaded.rows.isEmpty)
-        XCTAssertEqual(TextDiffCalculator.recordedCalculationCount, 0, "加载路径不应触发差异计算")
+        XCTAssertEqual(TextDiffCalculator.recordedCalculationCount, 1, "加载路径应恰好计算一次差异")
+        XCTAssertEqual(TextDiffCalculator.recordedMainThreadCalculationCount, 0, "差异计算不能落在主线程")
 
-        // 对照：同一份文档走按需入口恰好计算一次，说明上面的 0 不是计数失灵。
-        let calculated = await Task.detached(priority: .userInitiated) {
-            loaded.calculatingDiffRows()
-        }.value
-        XCTAssertEqual(TextDiffCalculator.recordedCalculationCount, 1)
-        XCTAssertEqual(calculated.rows.filter { $0.kind == .context }.count, large.count - 10)
-        XCTAssertEqual(calculated.rows.filter { $0.kind == .modified }.count, 10)
-        XCTAssertEqual(calculated.rows.filter { $0.kind == .added }.count, 1)
-        XCTAssertEqual(calculated.modifiedLines, large.count + 1)
+        // 计数是 1 而不是 0 的对照：加载完成的文档直接带着可用的逐行对照结果。
+        XCTAssertEqual(loaded.rows.filter { $0.kind == .context }.count, large.count - 10)
+        XCTAssertEqual(loaded.rows.filter { $0.kind == .modified }.count, 10)
+        XCTAssertEqual(loaded.rows.filter { $0.kind == .added }.count, 1)
+        XCTAssertEqual(loaded.originalLines, large.count)
+        XCTAssertEqual(loaded.modifiedLines, large.count + 1)
     }
 
     private func makeFixture() throws -> (directory: URL, repository: GitRepository, item: RepositoryFileItem) {

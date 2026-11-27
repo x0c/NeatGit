@@ -31,9 +31,19 @@ final class NativeWorkspaceTests: XCTestCase {
         file.click()
         let changesOnly = app.descendants(matching: .any)["diff-changes-only"].firstMatch
         XCTAssertTrue(changesOnly.waitForExistence(timeout: 15), "选择文本文件后应提供差异预览操作。")
-        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 10), "差异应由原生 WebView 承载。")
+        let diffPreview = app.descendants(matching: .any)["file-diff-preview"].firstMatch
+        XCTAssertTrue(diffPreview.waitForExistence(timeout: 15), "差异应由原生差异视图承载，不再内嵌网页。")
+        XCTAssertFalse(app.webViews.firstMatch.exists, "主界面不应再出现承载差异的网页视图。")
+        // 默认并排布局：左栏原文、右栏改后，两栏都是带辅助功能标识的原生文本视图。
+        let originalPane = app.descendants(matching: .any)["file-diff-original"].firstMatch
+        let modifiedPane = app.descendants(matching: .any)["file-diff-modified"].firstMatch
+        XCTAssertTrue(originalPane.exists, "并排差异应显示原文一栏。")
+        XCTAssertTrue(modifiedPane.exists, "并排差异应显示改后一栏。")
         changesOnly.click()
+        XCTAssertTrue(originalPane.exists, "切换只看变更后两栏保持存在。")
+        XCTAssertTrue(modifiedPane.exists)
         changesOnly.click()
+        XCTAssertTrue(diffPreview.exists, "展开全文后原生差异视图仍在。")
 
         let editor = app.textViews["commit-message-editor"].firstMatch
         XCTAssertTrue(editor.exists, "提交说明应使用可访问的系统文本编辑器。")

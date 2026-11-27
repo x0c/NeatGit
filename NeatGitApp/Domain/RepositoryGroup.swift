@@ -1,6 +1,6 @@
 import Foundation
 
-struct RepositoryGroup: Identifiable, Hashable {
+struct RepositoryGroup: Identifiable, Hashable, Sendable {
     let parentPath: String
     let title: String
     let repositories: [GitRepository]

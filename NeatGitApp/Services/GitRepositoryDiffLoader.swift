@@ -9,7 +9,9 @@ final class GitRepositoryDiffLoader: @unchecked Sendable {
         mode: RepositoryDiffMode
     ) async throws -> RepositoryDiffDocument {
         try await Task.detached(priority: .userInitiated) { [self] in
-            try makeDocument(for: item, in: repository, mode: mode)
+            try InteractionProfiler.measure("差异读取.后台任务", detail: "模式：\(mode.title)") {
+                try makeDocument(for: item, in: repository, mode: mode)
+            }
         }.value
     }
 
@@ -30,7 +32,9 @@ final class GitRepositoryDiffLoader: @unchecked Sendable {
             throw GitCommandError(message: "这个文件当前没有可展示的 \(mode.title) diff。")
         }
 
-        let (originalData, modifiedData) = try loadContents(for: item, in: repository, mode: mode)
+        let (originalData, modifiedData) = try InteractionProfiler.measure("差异读取.两侧内容") {
+            try loadContents(for: item, in: repository, mode: mode)
+        }
 
         if max(originalData.count, modifiedData.count) > maxTextBytes {
             throw GitCommandError(message: "文件过大，暂不展示超过 5 MB 的文本差异。")
@@ -43,16 +47,17 @@ final class GitRepositoryDiffLoader: @unchecked Sendable {
         let originalText = decodeText(originalData)
         let modifiedText = decodeText(modifiedData)
 
-        // 加载只取两侧全文，不做逐行对照：当前差异视图由网页侧自己算，逐行对照结果
-        // 只在调用 calculatingDiffRows() 时按需计算，悬停预读因此不再付出这份开销。
-        return RepositoryDiffDocument(
-            repositoryPath: repository.path,
-            filePath: item.path,
-            mode: mode,
-            originalText: originalText,
-            modifiedText: modifiedText,
-            languageHint: languageHint(for: item.path)
-        )
+        // 原生差异视图直接使用逐行对照结果：在同一个后台任务里算好随文档返回，主线程不做差异计算。
+        return InteractionProfiler.measure("差异计算.逐行对照") {
+            RepositoryDiffDocument(
+                repositoryPath: repository.path,
+                filePath: item.path,
+                mode: mode,
+                originalText: originalText,
+                modifiedText: modifiedText,
+                languageHint: languageHint(for: item.path)
+            ).calculatingDiffRows()
+        }
     }
 
     /// diff 两侧内容的来源：空、某个 Git 对象、或工作区文件。

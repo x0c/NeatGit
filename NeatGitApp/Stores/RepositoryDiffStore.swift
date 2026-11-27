@@ -41,6 +41,9 @@ final class RepositoryDiffStore {
         selectedFiles: [RepositoryFileItem],
         cacheRevision: Int
     ) {
+        let profileInterval = InteractionProfiler.begin("差异选择.状态处理")
+        defer { profileInterval.end("选中数：\(selectedFiles.count)") }
+
         let retainedMode = currentRepository?.id == repository?.id
             && selectedFiles.count == 1
             && currentItem?.id == selectedFiles.first?.id ? activeMode : nil
@@ -95,6 +98,7 @@ final class RepositoryDiffStore {
         headerSubtitle = mode.title
 
         if let cachedDocument = cachedDocument(for: repository, item: item, mode: mode) {
+            InteractionProfiler.event("差异读取.缓存命中")
             applyDocument(cachedDocument, for: item)
             return
         }
@@ -134,25 +138,30 @@ final class RepositoryDiffStore {
     }
 
     func selectMode(_ mode: RepositoryDiffMode) {
-        guard mode != activeMode, availableModes.contains(mode) else { return }
-        activeMode = mode
+        InteractionProfiler.measure("差异模式.点击处理", detail: "模式：\(mode.title)") {
+            guard mode != activeMode, availableModes.contains(mode) else { return }
+            activeMode = mode
+            selectModeAfterMeasurement(mode)
+        }
+    }
+
+    private func selectModeAfterMeasurement(_ mode: RepositoryDiffMode) {
 
         if let repository = currentRepository, let item = currentItem,
            let cached = cachedDocument(for: repository, item: item, mode: mode) {
             loadTask?.cancel()
+            InteractionProfiler.event("差异读取.缓存命中", detail: "来源：模式切换")
             applyDocument(cached, for: item)
             return
         }
 
-        loadCurrentSelection()
+        loadCurrentSelection(preservingDocument: true)
     }
 
     func toggleShowChangesOnly() {
-        showChangesOnly.toggle()
-    }
-
-    var payloadForDisplay: MonacoDiffPayload? {
-        displayedDocument?.monacoPayload
+        InteractionProfiler.measure("只看变更.点击处理") {
+            showChangesOnly.toggle()
+        }
     }
 
     var showsPlaceholder: Bool {
@@ -196,9 +205,11 @@ final class RepositoryDiffStore {
         return mode
     }
 
-    private func loadCurrentSelection() {
+    private func loadCurrentSelection(preservingDocument: Bool = false) {
         loadTask?.cancel()
-        document = nil
+        if !preservingDocument {
+            document = nil
+        }
 
         guard let repository = currentRepository, let item = currentItem else {
             isLoading = false
@@ -210,11 +221,17 @@ final class RepositoryDiffStore {
         messageBody = "读取 \(item.path) 的 \(activeMode.title) 内容中..."
         headerTitle = item.path
         headerSubtitle = activeMode.title
+        let mode = activeMode
 
         loadTask = Task {
             do {
-                let document = try await loadDocument(for: repository, item: item, mode: activeMode)
-                guard shouldApplyResult(for: repository, item: item) else { return }
+                let interval = InteractionProfiler.begin("差异读取.完整加载")
+                let document = try await loadDocument(for: repository, item: item, mode: mode)
+                interval.end("模式：\(mode.title)")
+                guard shouldApplyResult(for: repository, item: item) else {
+                    InteractionProfiler.event("差异读取.丢弃过期结果")
+                    return
+                }
                 applyDocument(document, for: item)
             } catch {
                 guard shouldApplyResult(for: repository, item: item) else { return }
@@ -231,14 +248,16 @@ final class RepositoryDiffStore {
     }
 
     private func applyDocument(_ document: RepositoryDiffDocument, for item: RepositoryFileItem) {
-        self.document = document
-        displayedDocument = document
-        isLoading = false
-        headerTitle = item.path
-        headerSubtitle = document.mode.title
-        messageTitle = item.path
-        messageBody = "\(document.mode.title) diff 已准备好。"
-        cache(document, for: CacheKey(repositoryID: document.repositoryPath, itemID: item.id, mode: document.mode))
+        InteractionProfiler.measure("差异文档.主线程发布", detail: "对照行数：\(document.rows.count)") {
+            self.document = document
+            displayedDocument = document
+            isLoading = false
+            headerTitle = item.path
+            headerSubtitle = document.mode.title
+            messageTitle = item.path
+            messageBody = "\(document.mode.title) diff 已准备好。"
+            cache(document, for: CacheKey(repositoryID: document.repositoryPath, itemID: item.id, mode: document.mode))
+        }
     }
 
     private func applyFailure(_ error: Error) {

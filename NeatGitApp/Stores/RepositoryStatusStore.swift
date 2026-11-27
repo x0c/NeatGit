@@ -92,7 +92,9 @@ final class RepositoryStatusStore {
 
             loadTask = Task {
                 do {
+                    let interval = InteractionProfiler.begin("仓库状态.缓存命中后刷新")
                     let freshSnapshot = try await fetchSnapshot(for: repository)
+                    interval.end()
                     guard shouldApplyResult(for: repository) else { return }
                     applySnapshot(freshSnapshot)
                 } catch {
@@ -112,7 +114,9 @@ final class RepositoryStatusStore {
 
         loadTask = Task {
             do {
+                let interval = InteractionProfiler.begin("仓库状态.完整读取")
                 let freshSnapshot = try await fetchSnapshot(for: repository)
+                interval.end()
                 guard shouldApplyResult(for: repository) else { return }
                 applySnapshot(freshSnapshot)
             } catch {
@@ -123,7 +127,9 @@ final class RepositoryStatusStore {
     }
 
     func refreshCurrentRepository() {
-        load(for: currentRepository)
+        InteractionProfiler.measure("刷新文件.点击处理") {
+            load(for: currentRepository)
+        }
     }
 
     /// 处理侧栏仓库行的悬停事件，按需预取仓库状态。
@@ -185,7 +191,9 @@ final class RepositoryStatusStore {
 
     private func startPrefetch(for repository: GitRepository) {
         let task = Task<RepositoryFileSnapshot, Error> { [loadSnapshot] in
-            try await loadSnapshot(repository)
+            let interval = InteractionProfiler.begin("仓库状态.悬停预取")
+            defer { interval.end() }
+            return try await loadSnapshot(repository)
         }
         inFlightPrefetch = InFlightPrefetch(repository: repository, task: task)
 
@@ -244,15 +252,17 @@ final class RepositoryStatusStore {
     }
 
     private func applySnapshot(_ snapshot: RepositoryFileSnapshot) {
-        let isUnchanged = self.snapshot == snapshot
+        InteractionProfiler.measure("仓库状态.主线程应用", detail: "文件数：\(snapshot.allFiles.count)") {
+            let isUnchanged = self.snapshot == snapshot
 
-        self.snapshot = snapshot
-        isLoading = false
-        errorMessage = nil
+            self.snapshot = snapshot
+            isLoading = false
+            errorMessage = nil
 
-        // 数据没有变化时保持版本号不变：右侧 diff 缓存与选中态都不受影响。
-        if !isUnchanged {
-            snapshotRevision += 1
+            // 数据没有变化时保持版本号不变：右侧 diff 缓存与选中态都不受影响。
+            if !isUnchanged {
+                snapshotRevision += 1
+            }
         }
     }
 

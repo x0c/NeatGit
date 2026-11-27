@@ -135,6 +135,7 @@ scripts/publish-release.sh                # 后台完整发布（公证排队几
 | 现象 | 排查方向 |
 |------|---------|
 | `xcodebuild` 编译报 sendability 错误 | 可能是 Swift 6.2 工具链变化引入的，先确认是否工具链升级导致 |
+| 签名归档报 `No signing certificate` | 先用 `security find-identity -v -p codesigning` 核对证书与私钥。2026-11-27 本次环境返回 0 个有效身份，Developer ID 安装因此阻断；`CODE_SIGNING_ALLOWED=NO` 只用于本地 Debug 构建/测试，不得用未签名或 Debug 产物替换 `/Applications/NeatGit.app` |
 | 差异预览空白 | 先确认该文件行已展开（只有展开的文件才加载差异），再看是否属于超 5 MB / 二进制 / 冲突的预期说明；改过差异视图后整片空白或改尺寸崩溃，对照[核心知识库 2.8](NEATGIT_KNOWLEDGE_BASE.md#28-原生差异渲染链路)的装配顺序与容器高度约束 |
 | 仓库扫描超时 / 卡死 | 检查 Home 目录下是否存在超深嵌套或超大 node_modules（扫描深度上限 6，但部分目录未被排除规则覆盖） |
 | AI 生成请求失败 | 在 AI 调试窗口查看 errorMessage；检查设置中的地址、模型和本地保存的密钥 |

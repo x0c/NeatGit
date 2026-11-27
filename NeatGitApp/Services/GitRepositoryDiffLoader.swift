@@ -23,7 +23,7 @@ final class GitRepositoryDiffLoader: @unchecked Sendable {
         }
 
         guard !item.hasConflict else {
-            throw GitCommandError(message: "冲突文件的可视化 diff 还没接入。")
+            throw GitCommandError(message: "暂不支持预览冲突文件的 diff。")
         }
 
         guard item.availableDiffModes.contains(mode) else {
@@ -33,11 +33,11 @@ final class GitRepositoryDiffLoader: @unchecked Sendable {
         let (originalData, modifiedData) = try loadContents(for: item, in: repository, mode: mode)
 
         if max(originalData.count, modifiedData.count) > maxTextBytes {
-            throw GitCommandError(message: "文件过大，第一版暂不展示超过 750 KB 的文本 diff。")
+            throw GitCommandError(message: "文件超过 750 KB，暂不展示 diff。")
         }
 
         if isBinaryData(originalData) || isBinaryData(modifiedData) {
-            throw GitCommandError(message: "当前只支持文本 diff，二进制文件稍后再接。")
+            throw GitCommandError(message: "暂不支持预览二进制文件。")
         }
 
         let originalText = decodeText(originalData)

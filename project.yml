@@ -5,6 +5,7 @@ options:
 
 settings:
   base:
+    COMPILATION_CACHE_ENABLE_CACHING: YES
     PRODUCT_BUNDLE_IDENTIFIER: io.github.x0c.neatgit
     PRODUCT_NAME: NeatGit
     SWIFT_VERSION: 6.0
@@ -19,6 +20,7 @@ settings:
       CODE_SIGN_STYLE: Automatic
       ENABLE_HARDENED_RUNTIME: NO
     Release:
+      COMPILER_INDEX_STORE_ENABLE: NO
       CODE_SIGN_STYLE: Manual
       CODE_SIGN_IDENTITY: "Developer ID Application"
       ENABLE_HARDENED_RUNTIME: YES

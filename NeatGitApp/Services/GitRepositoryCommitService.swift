@@ -27,7 +27,7 @@ final class GitRepositoryCommitService: @unchecked Sendable {
     private func perform(_ request: GitCommitRequest) throws -> GitCommitResult {
         let message = request.message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else {
-            throw GitCommandError(message: "请输入 commit message。")
+            throw GitCommandError(message: "请输入提交说明。")
         }
 
         let committableItems = request.changedItems.filter(\.isCommittableByDefault)

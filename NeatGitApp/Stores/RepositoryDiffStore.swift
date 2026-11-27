@@ -350,10 +350,10 @@ final class RepositoryDiffStore {
 
     private func unsupportedMessage(for item: RepositoryFileItem) -> String {
         if item.section != .changed {
-            return "skip-worktree 和 ignored 文件先保留列表能力，后面再补右侧预览。"
+            return "暂不支持预览 skip-worktree 和 ignored 文件。"
         }
 
-        return "如果它是冲突文件、目录占位或特殊 Git 状态，第一版会先给出说明。"
+        return "暂不支持预览冲突文件、目录或特殊 Git 状态。"
     }
 }
 

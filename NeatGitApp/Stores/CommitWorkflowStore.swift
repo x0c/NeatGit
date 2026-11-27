@@ -52,26 +52,15 @@ final class CommitWorkflowStore {
         repository: GitRepository?,
         snapshot: RepositoryFileSnapshot?
     ) -> String {
-        guard repository != nil else {
-            return "选择仓库后，会自动暂存并提交可提交的文件更改。"
-        }
-
-        guard let snapshot else {
-            return "正在读取仓库状态..."
-        }
+        guard let snapshot, snapshot.repositoryPath == repository?.path else { return "" }
+        let committableCount = snapshot.committableCount
+        guard committableCount > 0 else { return "没有可提交的文件" }
 
         let excludedCount = snapshot.excludedFromCommitCount
-        let committableCount = snapshot.committableCount
-
-        guard committableCount > 0 else {
-            return "没有可提交的更改，自动排除 .gitignore 和不提交的文件。"
-        }
-
         if excludedCount > 0 {
-            return "自动暂存并提交 \(committableCount) 个更改，排除 \(excludedCount) 个 .gitignore 和不提交的文件。"
+            return "将提交 \(committableCount) 个文件，排除 \(excludedCount) 个"
         }
-
-        return "自动暂存并提交 \(committableCount) 个更改，排除不提交的文件。"
+        return "将提交 \(committableCount) 个文件"
     }
 
     func generateMessage(

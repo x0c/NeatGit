@@ -26,15 +26,7 @@ CHANGED_COUNT = 3  # README.md (modified), untracked.txt (new), blob.bin (binary
 
 def _select_repository(driver, identifier: str = ALPHA_ROW) -> None:
     driver.press(identifier=identifier, role=None)
-    # 切仓库后要读 git 状态并重建文件列表；空仓库没有列表视图，所以等
-    # 汇总行的「N 个更改」出现，而不是等 repository-files 这个 identifier。
-    deadline = time.time() + 12
-    while time.time() < deadline:
-        text = " ".join(driver.text())
-        if "个更改" in text:
-            break
-        time.sleep(0.2)
-    time.sleep(0.8)
+    driver.ax().find(identifier="file-section-changed", timeout=12)
 
 
 def _press_file(driver, label: str) -> None:
@@ -117,7 +109,7 @@ def test_repository_selection_renders_file_sections(app, driver):
     text = driver.text()
     assert any("README.md" in item for item in text), "README.md missing from file list"
     assert any("untracked.txt" in item for item in text), "untracked.txt missing from file list"
-    assert any(f"{CHANGED_COUNT} 个更改" in item for item in text), f"status summary missing: {text[:8]}"
+    assert not any(f"{CHANGED_COUNT} 个更改" in item for item in text), "duplicate status summary"
 
 
 def test_commit_composer_tracks_selection(app, driver):
@@ -132,7 +124,7 @@ def test_commit_composer_tracks_selection(app, driver):
     driver.ax().find(identifier="commit-status-message", timeout=5)
 
     status = driver.value("commit-status-message") or ""
-    assert f"自动暂存并提交 {CHANGED_COUNT} 个更改" in status, status
+    assert f"将提交 {CHANGED_COUNT} 个文件" in status, status
 
 
 def test_single_file_diff_changes_pixels(app, driver, vision):
@@ -187,7 +179,7 @@ def test_second_repository_switch_updates_context(app, driver):
     time.sleep(1.0)
     text = driver.text()
     assert any("behind" in item for item in text)
-    assert any("0 个更改" in item for item in text), f"expected empty change list: {text[:10]}"
+    assert any("没有文件更改" in item for item in text), f"expected empty change list: {text[:10]}"
     assert not any("README.md" in item for item in text), "previous repository files leaked into the new context"
 
     _select_repository(driver)

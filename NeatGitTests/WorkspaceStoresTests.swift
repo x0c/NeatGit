@@ -106,15 +106,22 @@ final class WorkspaceStoresTests: XCTestCase {
         let message = store.statusMessage(repository: repositories[0], snapshot: snapshot)
 
         // 3 个变更里只有 A.swift 可提交：.gitignore 被硬排除，冲突文件不可勾选。
-        XCTAssertTrue(message.contains("1 个更改"), "状态文案应只统计真正会提交的文件，实际为：\(message)")
-        XCTAssertTrue(message.contains("1 个 .gitignore"), "被排除的文件数应如实告知，实际为：\(message)")
+        XCTAssertEqual(message, "将提交 1 个文件，排除 1 个")
     }
 
-    func testCommitStatusMessageReflectsMissingRepositoryAndSnapshot() {
+    func testCommitStatusMessageWaitsForMatchingSnapshot() {
         let store = makeCommitStore()
+        let snapshot = RepositoryFileSnapshot(
+            repositoryPath: repositories[0].path,
+            changedFiles: [makeItem(path: "A.swift")],
+            skippedFiles: [],
+            ignoredFiles: []
+        )
 
-        XCTAssertTrue(store.statusMessage(repository: nil, snapshot: nil).contains("选择仓库"))
-        XCTAssertTrue(store.statusMessage(repository: repositories[0], snapshot: nil).contains("正在读取"))
+        XCTAssertEqual(store.statusMessage(repository: nil, snapshot: snapshot), "")
+        XCTAssertEqual(store.statusMessage(repository: repositories[0], snapshot: nil), "")
+        XCTAssertEqual(store.statusMessage(repository: repositories[1], snapshot: snapshot), "")
+        XCTAssertEqual(store.statusMessage(repository: repositories[0], snapshot: snapshot), "将提交 1 个文件")
     }
 
     func testCommittableByDefaultMatchesCommitServiceRule() {

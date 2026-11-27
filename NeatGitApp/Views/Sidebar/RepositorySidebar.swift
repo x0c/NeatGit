@@ -1,111 +1,85 @@
 import SwiftUI
 
 struct RepositorySidebar: View {
-    private enum Layout {
-        static let minWidth: CGFloat = 240
-        static let idealWidth: CGFloat = 300
-    }
-
     let groups: [RepositoryGroup]
-    let isScanning: Bool
+    let didFinishInitialScan: Bool
     let starredRepositoryPaths: Set<GitRepository.ID>
+    var searchQuery = ""
     @Binding var selectionPath: GitRepository.ID?
     @Binding var expandedGroupID: RepositoryGroup.ID?
     let onToggleGroup: (RepositoryGroup.ID) -> Void
     let onToggleRepositoryStar: (GitRepository) -> Void
-    /// 接收侧栏仓库行的进入 / 离开事件；由状态容器统一决定何时预取。
     let onPrefetchRepository: (RepositoryHoverEvent) -> Void
 
-    private var repositoryCount: Int {
-        groups.reduce(0) { $0 + $1.repositories.count }
+    private var query: String { searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private var matches: [GitRepository] {
+        groups.flatMap(\.repositories).filter {
+            $0.name.localizedStandardContains(query) ||
+                ($0.path as NSString).abbreviatingWithTildeInPath.localizedStandardContains(query)
+        }
     }
 
     var body: some View {
-        // 选择、键盘导航、折叠动画全部交给系统 List，
-        // 这里只负责行内的排版与星标视觉。
+        let results = query.isEmpty ? [] : matches
+
         List(selection: $selectionPath) {
-            ForEach(groups) { group in
-                DisclosureGroup(isExpanded: expansionBinding(for: group)) {
-                    ForEach(group.repositories) { repository in
-                        RepositoryRow(
-                            repository: repository,
-                            isStarred: starredRepositoryPaths.contains(repository.id),
-                            onToggleStar: {
-                                onToggleRepositoryStar(repository)
-                            },
-                            onHover: {
-                                onPrefetchRepository($0)
-                            }
-                        )
-                        .tag(repository.id)
-                        // 组标题禁用选择后会传播到子行，这里显式恢复可选。
-                        .selectionDisabled(false)
-                        .accessibilityIdentifier("repository-\(repository.id)")
-                    }
-                } label: {
-                    RepositoryGroupLabel(group: group)
+            if query.isEmpty {
+                ForEach(groups) { group in
+                    DisclosureGroup(isExpanded: expansionBinding(for: group)) {
+                        ForEach(group.repositories) { repository in
+                            row(repository)
+                        }
+                    } label: {
+                        Button {
+                            onToggleGroup(group.id)
+                        } label: {
+                            RepositoryGroupLabel(group: group)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityValue(expandedGroupID == group.id ? "已展开" : "已折叠")
                         .accessibilityIdentifier("repository-group-\(group.id)")
+                    }
+                    .selectionDisabled()
                 }
-                // 分组只用于展开/折叠，不参与仓库选择。
-                .selectionDisabled()
+            } else {
+                ForEach(results) { repository in
+                    row(repository, showsLocation: true)
+                }
             }
         }
         .listStyle(.sidebar)
-        .frame(minWidth: Layout.minWidth, idealWidth: Layout.idealWidth, maxHeight: .infinity)
-        .navigationSplitViewColumnWidth(min: Layout.minWidth, ideal: Layout.idealWidth)
+        .navigationSplitViewColumnWidth(min: 196, ideal: 220, max: 300)
         .accessibilityIdentifier("repository-sidebar")
         .safeAreaBar(edge: .top, spacing: 0) {
-            HStack(spacing: Theme.Spacing.sm) {
-                Label("项目", systemImage: "folder")
-                    .font(.headline)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.primary)
-
-                Text(repositoryCount, format: .number)
-                    .font(Theme.Font.count)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, Theme.Spacing.xs)
-                    .padding(.vertical, Theme.Spacing.textStack)
-                    .background(.quaternary, in: Capsule())
-                    .accessibilityLabel("\(repositoryCount) 个项目")
-
-                Spacer(minLength: 0)
-
-                if isScanning {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("正在扫描项目")
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.md)
+            Text("仓库")
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: Theme.Workspace.headerHeight, alignment: .leading)
+                .padding(.horizontal, Theme.Spacing.lg)
         }
         .overlay {
-            // 空态只保留完成任务不可替代的一句：扫描中给诚实的进行态，
-            // 扫完无结果说明位置（个人目录），不写教学式说明。
-            if groups.isEmpty {
-                if isScanning {
-                    ContentUnavailableView {
-                        Label("正在扫描本地仓库…", systemImage: "magnifyingglass")
-                    } description: {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                } else {
-                    ContentUnavailableView {
-                        Label("暂无项目", systemImage: "folder.badge.questionmark")
-                    } description: {
-                        Text("未在个人目录发现 Git 仓库")
-                    }
-                }
+            if !query.isEmpty && results.isEmpty {
+                ContentUnavailableView.search(text: query)
+            } else if groups.isEmpty && didFinishInitialScan {
+                ContentUnavailableView("未找到仓库", systemImage: "folder")
             }
         }
     }
 
-    /// 把「同时只展开一组」的既有策略接到 DisclosureGroup 的布尔绑定上。
-    ///
-    /// 展开与折叠都转交 `onToggleGroup`，由 ContentView 继续决定互斥逻辑，
-    /// 避免这里和外部各存一份展开状态。
+    private func row(_ repository: GitRepository, showsLocation: Bool = false) -> some View {
+        RepositoryRow(
+            repository: repository,
+            showsLocation: showsLocation,
+            isStarred: starredRepositoryPaths.contains(repository.id),
+            onToggleStar: { onToggleRepositoryStar(repository) },
+            onHover: onPrefetchRepository
+        )
+        .tag(repository.id)
+        .selectionDisabled(false)
+        .accessibilityIdentifier("repository-\(repository.id)")
+    }
+
     private func expansionBinding(for group: RepositoryGroup) -> Binding<Bool> {
         Binding(
             get: { expandedGroupID == group.id },
@@ -119,58 +93,63 @@ struct RepositorySidebar: View {
 
 private struct RepositoryGroupLabel: View {
     let group: RepositoryGroup
+    @ScaledMetric(relativeTo: .callout) private var rowHeight = Theme.Workspace.rowHeight
 
     var body: some View {
         HStack(spacing: Theme.Spacing.xs) {
             Text(group.title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.head)
-
             Spacer(minLength: Theme.Spacing.xs)
-
-            // 组内有收藏项目时给个小星标，折叠状态下也能看出哪组重要。
             if group.starredRepositoryCount > 0 {
                 Image(systemName: "star")
-                    .font(.system(size: 8))
-                    .foregroundStyle(Theme.Palette.starred)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
-
             Text(group.repositories.count, format: .number)
                 .font(Theme.Font.count)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, Theme.Spacing.xs)
-                .padding(.vertical, Theme.Spacing.textStack)
-                .background(.quaternary, in: Capsule())
+                .accessibilityLabel("\(group.repositories.count) 个仓库")
         }
+        .frame(minHeight: rowHeight)
         .help(group.parentPath)
     }
 }
 
 private struct RepositoryRow: View {
     let repository: GitRepository
+    let showsLocation: Bool
     let isStarred: Bool
     let onToggleStar: () -> Void
     let onHover: (RepositoryHoverEvent) -> Void
 
     @State private var isHovering = false
+    @ScaledMetric(relativeTo: .callout) private var rowHeight = Theme.Workspace.rowHeight
 
     var body: some View {
         Label {
             HStack(spacing: Theme.Spacing.xs) {
                 Text(repository.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
+                    .font(.callout)
                     .truncationMode(.middle)
+                    .layoutPriority(1)
 
-                Spacer(minLength: Theme.Spacing.xs)
+                if showsLocation {
+                    Text((repository.parentPath as NSString).abbreviatingWithTildeInPath)
+                        .font(.caption)
+                        .truncationMode(.head)
+                        .foregroundStyle(.secondary)
+                }
 
-                // 星标始终占位，仅改变透明度，悬停时不会让文件名左右跳动。
+                Spacer(minLength: 0)
+
                 Button(action: onToggleStar) {
                     Image(systemName: "star")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(isStarred ? AnyShapeStyle(Theme.Palette.starred) : AnyShapeStyle(.tertiary))
+                        .font(.caption)
+                        .foregroundStyle(isStarred ? AnyShapeStyle(Theme.Palette.starred) : AnyShapeStyle(.secondary))
                         .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
@@ -178,23 +157,22 @@ private struct RepositoryRow: View {
                 .opacity(isStarred || isHovering ? 1 : 0)
                 .allowsHitTesting(isStarred || isHovering)
                 .accessibilityHidden(!isStarred && !isHovering)
-                .accessibilityLabel(isStarred ? "取消收藏 \(repository.name)" : "收藏项目 \(repository.name)")
-                .help(isStarred ? "取消收藏" : "收藏项目")
+                .accessibilityLabel(isStarred ? "取消收藏 \(repository.name)" : "收藏仓库 \(repository.name)")
+                .help(isStarred ? "取消收藏" : "收藏仓库")
                 .accessibilityIdentifier("repository-star-\(repository.id)")
             }
+            .lineLimit(1)
         } icon: {
             Image(systemName: "folder")
-                .foregroundStyle(Theme.Palette.accent.opacity(0.78))
         }
-        .padding(.vertical, Theme.Spacing.textStack)
+        .frame(minHeight: rowHeight)
         .onHover { isHovering in
             self.isHovering = isHovering
-            // 进入与离开都原样上报：停留满一小段时间才预取，快速划过不再为每行各起 git 进程。
             onHover(isHovering ? .entered(repository) : .exited(repository))
         }
         .help(repository.path)
         .contextMenu {
-            Button(isStarred ? "取消收藏" : "收藏项目", systemImage: isStarred ? "star.slash" : "star") {
+            Button(isStarred ? "取消收藏" : "收藏仓库", systemImage: isStarred ? "star.slash" : "star") {
                 onToggleStar()
             }
         }

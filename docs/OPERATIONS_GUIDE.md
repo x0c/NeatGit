@@ -101,6 +101,10 @@ xcodebuild -project NeatGit.xcodeproj -scheme NeatGit -configuration Debug \
 
 历史验证基线（2026-10，对应已移除的网页差异视图，仅作记录，不代表当前测试集）：macOS 26.7 / Xcode 26.3 下，12 项组件、差异状态与真实 WebView 测试通过；浅深色组件截图和 Chrome 差异显示、只读交互均已核验。完整桌面 XCUITest 因系统认证阻止初始化，未完成窗口点击与快捷键端到端验收，不能将其计入通过项。
 
+For workspace layout changes, `NativeControlsTests` uses an isolated Git repository and inspects actual native diff text in a wide light and a narrow dark host. A pre-sized `NSHostingView` avoids AppKit’s transient title-stack width constraint conflict when the host is attached. The host bitmap verifies the file navigator, editor and diff; it does not certify the vibrancy of the sidebar or the WindowGroup toolbar. Check those on the installed app itself.
+
+The pre-redesign main-window pixel baseline remains in `Tests/E2E/baselines/main-window.png` until the new workspace can be captured through the unlocked background E2E path. Lock-screen window captures and hosted fixture images are not interchangeable with that baseline. Re-freeze and rerun the same visual test without changing its zero-diff threshold; verify native search focus, disclosure by both row and chevron, and keyboard selection at the same time.
+
 After successful verification and a committed source snapshot, follow root `AGENTS.md` §8 and `RELEASING.md` for signed installation and launch of `/Applications/NeatGit.app`，核验进程路径和 PID。构建失败时不替换安装包。
 
 ### 4.6 交互性能采集

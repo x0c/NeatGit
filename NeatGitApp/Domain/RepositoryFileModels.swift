@@ -10,11 +10,11 @@ enum RepositoryFileSection: String, CaseIterable, Hashable, Identifiable, Sendab
     var title: String {
         switch self {
         case .changed:
-            return "待提交的文件更改"
+            return "更改"
         case .skipped:
-            return "不提交的文件"
+            return "不提交"
         case .ignored:
-            return "忽略版本管理的文件"
+            return "忽略"
         }
     }
 

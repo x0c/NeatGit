@@ -130,10 +130,10 @@ struct GitStatusBadge: View {
     var body: some View {
         Text(style.badgeText)
             .font(Theme.Font.badge)
-            .foregroundStyle(style.tint)
+            .foregroundStyle(.primary)
             .frame(width: Layout.size, height: Layout.size)
             .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.badge, style: .continuous)
                     .fill(style.tint.opacity(0.16))
             )
             // 角标三通道：颜色 + 字母 + 中文说明。help 覆盖鼠标悬停，

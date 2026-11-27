@@ -9,22 +9,27 @@ struct ContentView: View {
     let llmSettingsStore: LLMSettingsStore
     let aiCommitDebugStore: AICommitDebugStore
 
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    @State private var repositoryQuery = ""
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var repositoryStore = RepositoryStore()
+    @State private var repositoryStore: RepositoryStore
     @State private var statusStore = RepositoryStatusStore()
-    @State private var selection = WorkspaceSelectionStore()
+    @State private var selection: WorkspaceSelectionStore
     @State private var fileActionStore = RepositoryFileActionStore()
     @State private var commitStore: CommitWorkflowStore
 
     init(
         llmSettingsStore: LLMSettingsStore,
-        aiCommitDebugStore: AICommitDebugStore
+        aiCommitDebugStore: AICommitDebugStore,
+        repositoryStore: RepositoryStore = RepositoryStore(),
+        selection: WorkspaceSelectionStore = WorkspaceSelectionStore()
     ) {
         self.llmSettingsStore = llmSettingsStore
         self.aiCommitDebugStore = aiCommitDebugStore
+        _repositoryStore = State(initialValue: repositoryStore)
+        _selection = State(initialValue: selection)
         _commitStore = State(
             initialValue: CommitWorkflowStore(
                 llmSettingsStore: llmSettingsStore,
@@ -73,6 +78,11 @@ struct ContentView: View {
         selection.repository(in: repositoryStore.repositories)
     }
 
+    private var selectedSnapshot: RepositoryFileSnapshot? {
+        guard statusStore.snapshot?.repositoryPath == selectedRepository?.path else { return nil }
+        return statusStore.snapshot
+    }
+
     // MARK: - 骨架
 
     private var workspace: some View {
@@ -81,25 +91,29 @@ struct ContentView: View {
                 .disabled(commitStore.isBusy)
         } content: {
             filePane
-                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 480)
+                .navigationSplitViewColumnWidth(min: 250, ideal: 290, max: 380)
         } detail: {
             RepositoryPreviewPane(
                 repository: selectedRepository,
-                selectedFiles: selection.selectedFiles(in: statusStore.snapshot),
-                changedFiles: statusStore.snapshot?.changedFiles ?? [],
+                selectedFiles: selection.selectedFiles(in: selectedSnapshot),
                 selection: selection,
-                snapshot: statusStore.snapshot,
+                snapshot: selectedSnapshot,
                 cacheRevision: statusStore.snapshotRevision,
-                onFocusFile: { item in
+                onFileExpansion: { item, isExpanded in
                     InteractionProfiler.measure("展开文件差异.点击处理") {
-                        selection.selectFile(item)
+                        if isExpanded {
+                            selection.selectFile(item)
+                        } else if selection.selectedFileIDs == [item.id] {
+                            selection.selectedFileIDs = []
+                        }
                     }
                 }
             )
-            .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle(selectedRepository?.name ?? "NeatGit")
         }
         .navigationSplitViewStyle(.balanced)
-        .navigationTitle(selectedRepository?.name ?? "NeatGit")
+        .searchable(text: $repositoryQuery, placement: .sidebar, prompt: "搜索仓库")
         .frame(minWidth: 960, minHeight: 600)
         .toolbar { workspaceToolbar }
     }
@@ -116,7 +130,6 @@ struct ContentView: View {
             .accessibilityIdentifier("refresh-repository")
         }
 
-        ToolbarSpacer(.fixed, placement: .primaryAction)
 
         ToolbarItem(placement: .primaryAction) {
             Menu("项目操作", systemImage: "ellipsis.circle") {
@@ -124,10 +137,8 @@ struct ContentView: View {
                     repositoryStore.refresh()
                 }
                 .disabled(repositoryStore.isScanning || commitStore.isBusy)
-
                 Divider()
                 SettingsLink()
-                Button("AI 调试", systemImage: "ladybug", action: openCommitDebugWindow)
             }
             .accessibilityIdentifier("repository-actions")
         }
@@ -136,8 +147,9 @@ struct ContentView: View {
     private var sidebar: some View {
         RepositorySidebar(
             groups: repositoryGroups,
-            isScanning: repositoryStore.isScanning,
+            didFinishInitialScan: repositoryStore.didFinishInitialScan,
             starredRepositoryPaths: repositoryStore.starredRepositoryPaths,
+            searchQuery: repositoryQuery,
             selectionPath: Binding(
                 get: { selection.selectedRepositoryID },
                 set: { repositoryID in
@@ -149,7 +161,7 @@ struct ContentView: View {
             expandedGroupID: $selection.expandedGroupID,
             onToggleGroup: { groupID in
                 InteractionProfiler.measure("项目分组.展开折叠") {
-                    withAnimation(Theme.disclosureAnimation) {
+                    withAnimation(Theme.disclosureAnimation(reduceMotion: reduceMotion)) {
                         selection.toggleGroup(groupID)
                     }
                 }
@@ -162,9 +174,8 @@ struct ContentView: View {
     private var filePane: some View {
         RepositoryFilePanel(
             repository: selectedRepository,
-            snapshot: statusStore.snapshot,
-            isLoading: statusStore.isLoading,
-            errorMessage: statusStore.errorMessage,
+            snapshot: selectedSnapshot,
+            errorMessage: statusStore.errorMessage(for: selectedRepository),
             selectedFileIDs: Binding(
                 get: { selection.selectedFileIDs },
                 set: { fileIDs in
@@ -189,42 +200,32 @@ struct ContentView: View {
         )
         .disabled(commitStore.isRunningCommitAction)
         .safeAreaBar(edge: .bottom, spacing: 0) {
-            CommitComposerBar(
-                repository: selectedRepository,
-                commitMessage: $commitStore.commitMessage,
-                isRunningCommitAction: commitStore.isRunningCommitAction,
-                isGeneratingMessage: commitStore.isGeneratingMessage,
-                statusMessage: commitStore.statusMessage(
-                    repository: selectedRepository,
-                    snapshot: statusStore.snapshot
-                ),
-                onOpenDebugWindow: openCommitDebugWindow,
-                onGenerateMessage: {
-                    commitStore.generateMessage(
-                        for: selectedRepository,
-                        snapshot: statusStore.snapshot
-                    )
-                },
-                onCommitAndPush: { runCommit(.commitAndPush) },
-                onCommitOnly: { runCommit(.commitOnly) }
-            )
+            if selectedRepository != nil,
+               (selectedSnapshot?.committableCount ?? 0) > 0 || !commitStore.commitMessage.isEmpty || commitStore.isBusy {
+                CommitComposerBar(
+                    commitMessage: $commitStore.commitMessage,
+                    isRunningCommitAction: commitStore.isRunningCommitAction,
+                    isGeneratingMessage: commitStore.isGeneratingMessage,
+                    canCommit: (selectedSnapshot?.committableCount ?? 0) > 0,
+                    statusMessage: commitStore.statusMessage(repository: selectedRepository, snapshot: selectedSnapshot),
+                    onGenerateMessage: {
+                        commitStore.generateMessage(for: selectedRepository, snapshot: selectedSnapshot)
+                    },
+                    onCommitAndPush: { runCommit(.commitAndPush) },
+                    onCommitOnly: { runCommit(.commitOnly) }
+                )
+            }
         }
     }
 
     // MARK: - 意图转发
-
-    private func openCommitDebugWindow() {
-        InteractionProfiler.measure("打开 AI 调试.点击处理") {
-            openWindow(id: AICommitDebugWindowView.windowID)
-        }
-    }
 
     private func runCommit(_ action: GitCommitAction) {
         InteractionProfiler.measure("提交推送.点击处理") {
             commitStore.commit(
                 action,
                 repository: selectedRepository,
-                snapshot: statusStore.snapshot,
+                snapshot: selectedSnapshot,
                 onFinish: statusStore.refreshCurrentRepository
             )
         }

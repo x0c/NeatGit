@@ -126,6 +126,11 @@ final class RepositoryStatusStore {
         }
     }
 
+    func errorMessage(for repository: GitRepository?) -> String? {
+        guard let repository, currentRepository?.id == repository.id else { return nil }
+        return errorMessage
+    }
+
     func refreshCurrentRepository() {
         InteractionProfiler.measure("刷新文件.点击处理") {
             load(for: currentRepository)

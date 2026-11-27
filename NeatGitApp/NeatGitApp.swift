@@ -13,8 +13,8 @@ struct NeatGitApp: App {
                 aiCommitDebugStore: aiCommitDebugStore
             )
         }
-        .defaultSize(width: 1200, height: 780)
-        .windowToolbarStyle(.unified)
+        .defaultSize(width: 1240, height: 780)
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
             SidebarCommands()
             NeatGitUpdateCommands()

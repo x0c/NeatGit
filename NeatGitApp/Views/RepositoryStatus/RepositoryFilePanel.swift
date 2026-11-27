@@ -4,7 +4,6 @@ import SwiftUI
 struct RepositoryFilePanel: View {
     let repository: GitRepository?
     let snapshot: RepositoryFileSnapshot?
-    let isLoading: Bool
     let errorMessage: String?
     @Binding var selectedFileIDs: Set<RepositoryFileItem.ID>
     let onRefresh: () -> Void
@@ -16,97 +15,57 @@ struct RepositoryFilePanel: View {
     /// 展开的分区纯属本面板的展示形态，外部没有人读它，
     /// 放在这里自持比从主视图透传更贴合归属。始终只展开一组。
     @State private var expandedSections: Set<RepositoryFileSection> = [.changed]
+    @State private var showsErrorDetails = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .callout) private var rowHeight = Theme.Workspace.rowHeight
 
     var body: some View {
         Group {
-            // 有内容时优先展示内容（含过时缓存），读取失败只降级为顶部提示，
-            // 避免后台刷新失败把整个列表清成错误页。
-            if repository == nil {
-                ContentUnavailableView(
-                    "先选择一个仓库",
-                    systemImage: "shippingbox",
-                    description: Text("选中左侧仓库后，这里会读取文件状态。")
-                )
-            } else if let snapshot {
-                if snapshot.isEmpty {
-                    ContentUnavailableView(
-                        "当前很干净",
-                        systemImage: "checkmark.circle",
-                        description: Text("没有更改、不提交或忽略的文件。")
-                    )
-                } else {
-                    fileList(snapshot)
-                }
-            } else if let errorMessage {
-                ContentUnavailableView {
-                    Label("读取 Git 状态失败", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(errorMessage)
-                } actions: {
-                    Button("重新读取", action: onRefresh)
-                }
+            if let snapshot {
+                fileList(snapshot)
+            } else if repository != nil && errorMessage == nil {
+                loadingRows
             } else {
-                ProgressView("正在读取文件状态…")
+                Color.clear
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaBar(edge: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    Label("文件更改", systemImage: "square.stack.3d.up")
-                        .font(.headline)
-                        .symbolRenderingMode(.hierarchical)
-
-                    Spacer(minLength: Theme.Spacing.sm)
-
-                    if isLoading {
-                        ProgressView()
-                            .controlSize(.small)
-                            .accessibilityLabel("正在读取文件状态")
+            HStack(spacing: Theme.Spacing.sm) {
+                Text("文件").font(.headline)
+                Spacer(minLength: 0)
+                if errorMessage != nil {
+                    Button(snapshot == nil ? "无法读取" : "无法刷新", systemImage: "exclamationmark.triangle") {
+                        showsErrorDetails = true
                     }
-                }
-
-                if let snapshot {
-                    if let errorMessage {
-                        // 刷新失败降级为顶部提示（SWR）：快照内容保留可操作，
-                        // 警示图标与主要正文避免失败被误认为普通摘要。
-                        Label {
-                            Text("刷新失败：\(errorMessage)")
-                                .font(.caption)
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        } icon: {
-                            Image(systemName: "exclamationmark.triangle")
-                                .foregroundStyle(.orange)
-                        }
-                        .help(errorMessage)
-                    } else {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            RepositorySummaryBadge(
-                                count: snapshot.changedFiles.count,
-                                title: "更改",
-                                tint: Theme.Palette.accent
-                            )
-                            RepositorySummaryBadge(
-                                count: snapshot.skippedFiles.count,
-                                title: "不提交",
-                                tint: .orange
-                            )
-                            RepositorySummaryBadge(
-                                count: snapshot.ignoredFiles.count,
-                                title: "忽略",
-                                tint: .secondary
-                            )
-                            Spacer(minLength: 0)
-                        }
-                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderless)
+                    .help("查看错误详情")
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: Theme.Workspace.headerHeight)
             .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.md)
         }
+        .alert("无法读取文件状态", isPresented: $showsErrorDetails, presenting: errorMessage) { _ in
+            Button("重试", action: onRefresh)
+            Button("关闭", role: .cancel) {}
+        } message: { error in
+            Text(error)
+        }
+    }
+
+    private var loadingRows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(RepositoryFileSection.allCases) { section in
+                Label(section.title, systemImage: section.iconName)
+                    .font(.callout)
+                    .frame(minHeight: rowHeight)
+            }
+        }
+        .redacted(reason: .placeholder)
+        .accessibilityHidden(true)
+        .padding(.horizontal, Theme.Spacing.lg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func fileList(_ snapshot: RepositoryFileSnapshot) -> some View {
@@ -115,25 +74,27 @@ struct RepositoryFilePanel: View {
                 DisclosureGroup(isExpanded: expansionBinding(for: section)) {
                     sectionContents(snapshot, section: section)
                 } label: {
-                    Label {
-                        HStack {
-                            Text(section.title)
-                            Spacer(minLength: Theme.Spacing.xxs)
-                            Text(snapshot.files(in: section).count, format: .number)
-                                .font(Theme.Font.count)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, Theme.Spacing.xs)
-                                .padding(.vertical, Theme.Spacing.textStack)
-                                .background(.quaternary, in: Capsule())
+                    Button {
+                        expansionBinding(for: section).wrappedValue.toggle()
+                    } label: {
+                        Label {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                Text(section.title).font(.callout.weight(.medium))
+                                Spacer(minLength: 0)
+                                Text(snapshot.files(in: section).count, format: .number)
+                                    .font(Theme.Font.count)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: section.iconName).foregroundStyle(.secondary)
                         }
-                        .font(.callout.weight(.semibold))
-                    } icon: {
-                        Image(systemName: section.iconName)
-                            .foregroundStyle(tint(for: section))
+                        .frame(minHeight: rowHeight)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("file-section-\(section.rawValue)")
                 }
                 .selectionDisabled()
-                .accessibilityIdentifier("file-section-\(section.rawValue)")
             }
         }
         .listStyle(.inset)
@@ -147,12 +108,7 @@ struct RepositoryFilePanel: View {
     ) -> some View {
         let items = snapshot.files(in: section)
         let repositoryPath = snapshot.repositoryPath
-        if items.isEmpty {
-            Text(section.emptyDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .selectionDisabled()
-        } else if let subgroups = snapshot.smartGroups(in: section) {
+        if let subgroups = snapshot.smartGroups(in: section) {
             ForEach(subgroups) { subgroup in
                 Section {
                     fileRows(subgroup.items, repositoryPath: repositoryPath, subgroupPath: subgroup.directoryPath)
@@ -200,43 +156,12 @@ struct RepositoryFilePanel: View {
                 // 与 Theme.disclosureAnimation 共用同一 token，
                 // 避免侧栏/中栏各自手写 duration 导致节奏不一致。
                 InteractionProfiler.measure("文件分组.展开折叠") {
-                    withAnimation(Theme.disclosureAnimation) {
+                    withAnimation(Theme.disclosureAnimation(reduceMotion: reduceMotion)) {
                         expandedSections = isExpanded ? [section] : []
                     }
                 }
             }
         )
-    }
-
-    private func tint(for section: RepositoryFileSection) -> some ShapeStyle {
-        switch section {
-        case .changed:
-            return Theme.Palette.accent
-        case .skipped:
-            return Color.orange
-        case .ignored:
-            return Color.secondary
-        }
-    }
-}
-
-/// 顶栏摘要标签：数字、文字和语义色共同表达状态，不依赖颜色单独区分。
-private struct RepositorySummaryBadge: View {
-    let count: Int
-    let title: String
-    let tint: Color
-
-    private var resolvedTint: Color {
-        count == 0 ? .secondary : tint
-    }
-
-    var body: some View {
-        Text("\(count) 个\(title)")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(resolvedTint)
-            .padding(.horizontal, Theme.Spacing.xs)
-            .padding(.vertical, Theme.Spacing.xxs)
-            .background(resolvedTint.opacity(0.09), in: Capsule())
     }
 }
 
@@ -249,27 +174,29 @@ private struct RepositoryFileInteractiveRow: View {
     let onMarkAsSkipped: (RepositoryFileItem) -> Void
     let onRemoveFromSkipped: (RepositoryFileItem) -> Void
 
+    @ScaledMetric(relativeTo: .callout) private var rowHeight = Theme.Workspace.rowHeight
+
     var body: some View {
         Label {
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: Theme.Spacing.xs) {
                 Text(item.displayName)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.callout)
                     .strikethrough(item.isDeleted)
-                    .lineLimit(1)
                     .truncationMode(.middle)
+                    .layoutPriority(1)
 
                 if let parentPath = item.parentPathDisplay(relativeTo: subgroupPath) {
                     Text(parentPath)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
                         .truncationMode(.head)
                 }
             }
+            .lineLimit(1)
         } icon: {
             GitStatusBadge(style: item.statusStyle)
         }
-        .padding(.vertical, Theme.Spacing.textStack)
+        .frame(minHeight: rowHeight)
         .help(item.relativePath)
         .accessibilityIdentifier("file-\(item.id)")
         .accessibilityLabel("\(item.displayName)，\(item.statusStyle.label)")

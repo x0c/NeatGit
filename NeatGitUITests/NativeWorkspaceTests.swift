@@ -56,7 +56,9 @@ final class NativeWorkspaceTests: XCTestCase {
         app.typeKey("a", modifierFlags: .command)
         app.typeKey(.delete, modifierFlags: [])
 
-        app.buttons["open-ai-debug"].click()
+        let windowMenu = app.menuBars.menuBarItems.matching(NSPredicate(format: "label IN %@", ["Window", "窗口"])).firstMatch
+        windowMenu.click()
+        windowMenu.menuItems["AI 调试"].firstMatch.click()
         XCTAssertTrue(app.staticTexts["还没有 AI 调试记录"].waitForExistence(timeout: 5))
         app.buttons["关闭"].firstMatch.click()
         XCTAssertTrue(editor.waitForExistence(timeout: 5), "关闭调试窗口不能误关主窗口。")

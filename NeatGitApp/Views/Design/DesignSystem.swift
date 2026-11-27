@@ -30,6 +30,13 @@ enum Theme {
         static let lg: CGFloat = 16
     }
 
+    enum Workspace {
+        static let headerHeight: CGFloat = 40
+        static let rowHeight: CGFloat = 24
+        static let disclosureRowHeight: CGFloat = 32
+        static let commitEditorHeight: CGFloat = 64
+    }
+
     /// 圆角。本产品唯一的常规曲率是 `standard` 8pt。
     /// 卡片、输入框、按钮、菜单、浮层统一引用它（UI_DESIGN_GUIDE「同一界面只允许一种常规曲率」）。
     /// 嵌套必须同心：内圆角 = 外圆角 − 间距，不抄同一个数。
@@ -52,6 +59,7 @@ enum Theme {
         static let accent = Color(nsColor: .controlAccentColor)
         /// 提交卡片等独立功能区域的清晰实底。
         static let panelBackground = Color(nsColor: .controlBackgroundColor)
+        static let diffCanvas = Color(nsColor: .textBackgroundColor)
         /// Git 新增，绿色。
         static let gitAdded = Color(nsColor: .systemGreen)
         /// Git 修改，橙色。

@@ -13,6 +13,7 @@ final class RepositoryStore {
     /// 视图刷新、提交说明输入和文件选择不再重复执行路径分组与排序。
     private(set) var groups: [RepositoryGroup] = []
     private(set) var isScanning = false
+    private(set) var didFinishInitialScan = false
     private(set) var starredRepositoryPaths: Set<GitRepository.ID>
 
     @ObservationIgnored
@@ -24,9 +25,14 @@ final class RepositoryStore {
     @ObservationIgnored
     private var groupTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, initialRepositories: [GitRepository] = []) {
         self.defaults = defaults
         self.starredRepositoryPaths = Set(defaults.stringArray(forKey: StorageKey.starredRepositoryPaths) ?? [])
+        if !initialRepositories.isEmpty {
+            self.repositories = initialRepositories
+            self.groups = RepositoryGroup.makeGroups(from: initialRepositories, starredRepositoryPaths: starredRepositoryPaths)
+            self.didFinishInitialScan = true
+        }
     }
 
     func refresh() {
@@ -54,6 +60,7 @@ final class RepositoryStore {
                 // 先更新派生分组，再发布仓库数组，保证选择态校正看到同一代数据。
                 groups = scannedGroups
                 repositories = scannedRepositories
+                didFinishInitialScan = true
             }
         }
     }
